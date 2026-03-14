@@ -536,9 +536,9 @@ def cmd_run(args: argparse.Namespace) -> None:
         console.print(json.dumps(result, indent=2, ensure_ascii=False))
     else:
         from adelie.orchestrator import Orchestrator
-        from adelie.interactive import InteractiveSession
+        from adelie.interactive import AdelieApp
         orchestrator = Orchestrator(goal=goal, phase=phase)
-        InteractiveSession(orchestrator).start()
+        AdelieApp(orchestrator).run()
 
 
 def cmd_status(args: argparse.Namespace) -> None:

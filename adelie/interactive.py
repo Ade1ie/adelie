@@ -1,182 +1,248 @@
 """
 adelie/interactive.py
 
-Interactive REPL environment for the Adelie orchestrator.
-Allows the user to issue commands (/feedback, /pause, /status) while the AI loop
-runs continuously in a background thread. Outputs from the background thread are
-patched so they don't break the user's input prompt.
+Interactive TUI environment for the Adelie orchestrator using Textual.
+Provides a clear dashboard UI with a RichLog for background orchestrator 
+output and a bottom Input bar for issuing slash commands.
 """
 
 from __future__ import annotations
 
 import sys
 import threading
-import time
 from typing import Optional
 
-from prompt_toolkit import PromptSession
-from prompt_toolkit.patch_stdout import patch_stdout
-from prompt_toolkit.shortcuts import clear
-from rich.console import Console
+from rich.console import Console, RenderableType
+from textual.app import App, ComposeResult
+from textual.containers import Vertical
+from textual.widgets import Header, Footer, Input, RichLog
+from textual import work
 
-import adelie.config as cfg
+from adelie.orchestrator import Orchestrator
 
-console = Console()
 
-class InteractiveSession:
-    """Manages the interactive REPL and the background orchestrator thread."""
+class ConsoleRedirector:
+    """Redirects rich.console.Console prints to a Textual RichLog."""
+    def __init__(self, log_widget: RichLog, original_console: Console):
+        self.log_widget = log_widget
+        self.original_console = original_console
 
-    def __init__(self, orchestrator):
+    def print(self, *objects, **kwargs):
+        """Intercepts console.print() and sends it to the RichLog via app.call_from_thread."""
+        
+        # We need to render the objects first, because RichLog expects strings or Renderables
+        # Passing multiple objects to RichLog directly isn't as clean as what Console does.
+        # But for Adelie, we almost always pass a single Renderable (string, Panel, Table, etc.)
+        
+        # Send each object to the RichLog
+        for obj in objects:
+            try:
+                # Use call_from_thread to safely write to the UI from the background worker
+                self.log_widget.app.call_from_thread(self.log_widget.write, obj)
+            except Exception:
+                # If app is shutting down, just print to normal stdout
+                pass
+
+
+class AdelieApp(App):
+    """A Textual App for Adelie."""
+    
+    CSS = """
+    RichLog {
+        height: 1fr;
+        border: solid cyan;
+        background: $surface;
+    }
+    Input {
+        dock: bottom;
+        margin: 1 1;
+    }
+    """
+
+    BINDINGS = [
+        ("ctrl+d", "quit", "Quit"),
+        ("ctrl+c", "quit", "Quit"),
+        ("ctrl+l", "clear_log", "Clear Log"),
+    ]
+
+    def __init__(self, orchestrator: Orchestrator, **kwargs):
+        super().__init__(**kwargs)
         self.orchestrator = orchestrator
-        self.session_thread: Optional[threading.Thread] = None
-        self._stop_requested = False
+        self._original_console: Optional[Console] = None
 
-    def start(self) -> None:
-        """Start the orchestrator in the background and enter the interactive REPL."""
-        console.print("[bold cyan]🐧 Adelie Interactive Session[/bold cyan]")
-        console.print("[dim]Type '/help' for a list of commands. Press Ctrl+D to exit.[/dim]\n")
+    def compose(self) -> ComposeResult:
+        """Create child widgets for the app."""
+        yield Header(show_clock=True)
+        with Vertical():
+            yield RichLog(id="main_log", markup=True, highlight=True, auto_scroll=True)
+        yield Input(placeholder="Type /help for commands, or write feedback directly...", id="command_input")
+        yield Footer()
 
-        # 1. Start Orchestrator in background
-        self.session_thread = threading.Thread(
-            target=self._run_orchestrator,
-            name="AdelieOrchestratorThread",
-            daemon=True,
-        )
-        self.session_thread.start()
+    def on_mount(self) -> None:
+        """Set up the environment and start the background orchestrator."""
+        self.title = "🐧 Adelie Autonomous AI Loop"
+        self.sub_title = f"Goal: {self.orchestrator.goal[:40]}..."
+        
+        # Set up log redirection
+        log_widget = self.query_one(RichLog)
+        
+        # We must patch the global console used by Adelie's components
+        import adelie.orchestrator as orch_module
+        import adelie.agents.writer_ai as writer_module
+        import adelie.agents.expert_ai as expert_module
+        import adelie.agents.research_ai as research_module
+        import adelie.agents.coder_ai as coder_module
+        import adelie.agents.coder_manager as coder_manager_module
+        import adelie.agents.tester_ai as tester_module
+        import adelie.agents.runner_ai as runner_module
+        import adelie.agents.monitor_ai as monitor_module
+        import adelie.agents.analyst_ai as analyst_module
+        import adelie.interactive as interactive_module
 
-        # 2. Start prompt loop in main thread
-        try:
-            self._prompt_loop()
-        except (KeyboardInterrupt, EOFError):
-            pass
-        finally:
-            self._shutdown()
+        self._original_console = orch_module.console
+        redirector = ConsoleRedirector(log_widget, self._original_console)
 
-    def _run_orchestrator(self) -> None:
-        """Wrapper to run the orchestrator loop."""
+        # Patch consoles in all modules that might print
+        orch_module.console = redirector
+        writer_module.console = redirector
+        expert_module.console = redirector
+        research_module.console = redirector
+        coder_module.console = redirector
+        coder_manager_module.console = redirector
+        tester_module.console = redirector
+        runner_module.console = redirector
+        monitor_module.console = redirector
+        analyst_module.console = redirector
+        interactive_module.console = redirector
+
+        # Focus input and start worker
+        self.query_one(Input).focus()
+        log_widget.write("[bold cyan]🐧 Adelie UI Initialized. Starting orchestrator loop...[/bold cyan]")
+        log_widget.write("[dim]Type '/help' below for a list of available commands.[/dim]\n")
+        
+        self.run_orchestrator()
+
+    @work(thread=True)
+    def run_orchestrator(self) -> None:
+        """Run the orchestrator loop in a background thread."""
         try:
             self.orchestrator.run_loop()
         except Exception as e:
-            console.print(f"[bold red]❌ Orchestrator loop crashed: {e}[/bold red]")
+            self.call_from_thread(self._handle_orchestrator_crash, e)
         finally:
-            # If orchestrator exits on its own, stop the interactive session
-            if not self._stop_requested:
-                console.print("\n[dim]Orchestrator loop finished. Press Enter to exit.[/dim]")
+            self.call_from_thread(self._handle_orchestrator_finish)
 
-    def _prompt_loop(self) -> None:
-        """The main REPL loop using prompt_toolkit."""
-        session = PromptSession()
+    def _handle_orchestrator_crash(self, e: Exception) -> None:
+        log_widget = self.query_one(RichLog)
+        log_widget.write(f"\n[bold red]❌ Orchestrator loop crashed: {e}[/bold red]")
+        self.sub_title = "CRASHED"
 
-        while not self._stop_requested and self.orchestrator._running:
-            with patch_stdout():
-                try:
-                    text = session.prompt("Adelie> ").strip()
-                except (KeyboardInterrupt, EOFError):
-                    break
+    def _handle_orchestrator_finish(self) -> None:
+        log_widget = self.query_one(RichLog)
+        log_widget.write("\n[dim]Orchestrator loop finished. You can close this window now.[/dim]")
+        
+    def action_clear_log(self) -> None:
+        """Action to clear the log."""
+        self.query_one(RichLog).clear()
 
-                if not text:
-                    continue
+    async def on_input_submitted(self, event: Input.Submitted) -> None:
+        """Handle when the user hits Enter in the input box."""
+        text = event.value.strip()
+        if not text:
+            return
 
-                if text.startswith("/"):
-                    self._handle_command(text)
-                else:
-                    # Treat non-command text as feedback
-                    self._handle_command(f"/feedback {text}")
+        # Clear the input
+        input_widget = self.query_one(Input)
+        input_widget.value = ""
 
-    def _handle_command(self, text: str) -> None:
+        # Print what the user typed
+        log_widget = self.query_one(RichLog)
+        log_widget.write(f"[bold blue]Adelie> {text}[/bold blue]")
+
+        # Process command
+        if text.startswith("/"):
+            self._handle_command(text, log_widget)
+        else:
+            self._handle_command(f"/feedback {text}", log_widget)
+
+    def _handle_command(self, text: str, log_widget: RichLog) -> None:
         """Parse and execute slash commands."""
         parts = text.split(" ", 1)
         cmd = parts[0].lower()
         args = parts[1] if len(parts) > 1 else ""
 
         if cmd in ("/quit", "/exit"):
-            self._shutdown()
+            log_widget.write("[yellow]Shutting down... please wait.[/yellow]")
+            self.orchestrator._running = False
+            if getattr(self.orchestrator, "_pause_requested", False):
+                self.orchestrator.resume()  # unblock if paused
+            
+            # Use call_after_refresh so it pushes the text before quitting
+            self.call_later(self.exit)
+
         elif cmd == "/help":
-            self._cmd_help()
-        elif cmd == "/status":
-            self._cmd_status()
-        elif cmd == "/pause":
-            self._cmd_pause()
-        elif cmd == "/resume":
-            self._cmd_resume()
-        elif cmd == "/clear":
-            clear()
-        elif cmd == "/feedback":
-            self._cmd_feedback(args)
-        else:
-            print(f"Unknown command: {cmd}. Type /help for available commands.")
-
-    def _cmd_help(self) -> None:
-        help_text = """
-Available Commands:
-  /help                 Show this help message
-  /status               Show current orchestrator status
-  /pause                Pause the orchestrator loop before the next cycle
-  /resume               Resume a paused orchestrator
-  /feedback <message>   Send direct feedback to the AI
-  /clear                Clear the terminal screen
-  /exit, /quit          Stop the orchestrator and exit
+            help_text = """
+[bold]Available Commands:[/bold]
+  [cyan]/help[/cyan]                 Show this help message
+  [cyan]/status[/cyan]               Show current orchestrator status
+  [cyan]/pause[/cyan]                Pause the orchestrator loop before the next cycle
+  [cyan]/resume[/cyan]               Resume a paused orchestrator
+  [cyan]/feedback <msg>[/cyan]       Send direct feedback to the AI
+  [cyan]/clear[/cyan]                Clear the log window
+  [cyan]/exit[/cyan], [cyan]/quit[/cyan]         Stop the orchestrator and exit
 """
-        print(help_text.strip())
+            log_widget.write(help_text.strip())
 
-    def _cmd_status(self) -> None:
-        state = self.orchestrator.state.value if self.orchestrator.state else "unknown"
-        phase = self.orchestrator.phase
-        iteration = self.orchestrator.loop_iteration
-        paused = "PAUSED" if getattr(self.orchestrator, "_pause_requested", False) else "RUNNING"
-        
-        console.print(f"[bold cyan]Status[/bold cyan]: {paused}")
-        console.print(f"  [dim]Phase:[/dim]  {phase}")
-        console.print(f"  [dim]State:[/dim]  {state}")
-        console.print(f"  [dim]Cycle:[/dim]  {iteration}")
+        elif cmd == "/status":
+            state = self.orchestrator.state.value if self.orchestrator.state else "unknown"
+            phase = self.orchestrator.phase
+            iteration = self.orchestrator.loop_iteration
+            paused = "PAUSED" if getattr(self.orchestrator, "_pause_requested", False) else "RUNNING"
+            
+            log_widget.write(f"[bold cyan]Status[/bold cyan]: {paused}")
+            log_widget.write(f"  [dim]Phase:[/dim]  {phase}")
+            log_widget.write(f"  [dim]State:[/dim]  {state}")
+            log_widget.write(f"  [dim]Cycle:[/dim]  {iteration}")
 
-    def _cmd_pause(self) -> None:
-        if getattr(self.orchestrator, "_pause_requested", False):
-            print("Orchestrator is already paused (or pausing).")
+        elif cmd == "/pause":
+            if getattr(self.orchestrator, "_pause_requested", False):
+                log_widget.write("[yellow]Orchestrator is already paused (or pausing).[/yellow]")
+            else:
+                self.orchestrator.pause()
+                log_widget.write("[yellow]Pause requested. Orchestrator will pause at the start of the next cycle.[/yellow]")
+                self.sub_title = "PAUSING..."
+
+        elif cmd == "/resume":
+            if not getattr(self.orchestrator, "_pause_requested", False):
+                log_widget.write("[dim]Orchestrator is not paused.[/dim]")
+            else:
+                self.orchestrator.resume()
+                log_widget.write("[green]Resuming orchestrator...[/green]")
+                self.sub_title = f"Goal: {self.orchestrator.goal[:40]}..."
+
+        elif cmd == "/clear":
+            log_widget.clear()
+
+        elif cmd == "/feedback":
+            if not args.strip():
+                log_widget.write("[red]Error: Feedback message cannot be empty.[/red]")
+                return
+
+            # Avoid circular import at top level
+            from adelie.cli import cmd_feedback
+            import argparse
+            
+            class FakeArgs(argparse.Namespace):
+                def __init__(self, msg):
+                    self.message = msg
+                    self.priority = "normal"
+                    self.list_pending = False
+                    
+            try:
+                cmd_feedback(FakeArgs(args))
+                log_widget.write(f"[green]✅ Feedback recorded. AI will read it next cycle.[/green]")
+            except Exception as e:
+                log_widget.write(f"[red]❌ Failed to save feedback: {e}[/red]")
+
         else:
-            self.orchestrator.pause()
-            print("Pause requested. Orchestrator will pause at the start of the next cycle.")
-
-    def _cmd_resume(self) -> None:
-        if not getattr(self.orchestrator, "_pause_requested", False):
-            print("Orchestrator is not paused.")
-        else:
-            self.orchestrator.resume()
-            print("Resuming orchestrator...")
-
-    def _cmd_feedback(self, message: str) -> None:
-        if not message.strip():
-            print("Error: Feedback message cannot be empty.")
-            return
-
-        from adelie.cli import cmd_feedback
-        import argparse
-        
-        # Borrow the logic from cli.cmd_feedback
-        class FakeArgs(argparse.Namespace):
-            def __init__(self, msg):
-                self.message = msg
-                self.priority = "normal"
-                self.list_pending = False
-                
-        cmd_feedback(FakeArgs(message))
-        console.print(f"[green]✅ Feedback recorded. AI will read it next cycle.[/green]")
-
-    def _shutdown(self) -> None:
-        """Gracefully shut down the orchestrator and exit."""
-        if self._stop_requested:
-            return
-            
-        self._stop_requested = True
-        console.print("\n[yellow]Shutting down orchestrator... please wait.[/yellow]")
-        
-        self.orchestrator._running = False
-        if getattr(self.orchestrator, "_pause_requested", False):
-            self.orchestrator.resume()  # Unblock if paused
-            
-        if self.session_thread and self.session_thread.is_alive():
-            # Wait up to a few seconds for graceful shutdown
-            self.session_thread.join(timeout=3.0)
-            
-        console.print("[green]Goodbye![/green]")
-        sys.exit(0)
+            log_widget.write(f"[red]Unknown command: {cmd}. Type /help for available commands.[/red]")
