@@ -13,6 +13,7 @@ State machine:
 from __future__ import annotations
 
 import json
+from typing import Callable, Optional
 import signal
 import sys
 import time
@@ -101,6 +102,39 @@ class Orchestrator:
 
         # Auto-scan: if KB is empty and project has existing code, scan first
         self._auto_scan_done = False
+
+        # ── TUI event callbacks (set by interactive.py) ───────────────────
+        self._on_agent_start: Optional[Callable[[str], None]] = None
+        self._on_agent_end: Optional[Callable[[str, str], None]] = None
+        self._on_cycle_start: Optional[Callable[[int, str, str], None]] = None
+        self._on_cycle_end: Optional[Callable[[dict], None]] = None
+
+    def set_ui_callbacks(
+        self,
+        on_agent_start: Optional[Callable] = None,
+        on_agent_end: Optional[Callable] = None,
+        on_cycle_start: Optional[Callable] = None,
+        on_cycle_end: Optional[Callable] = None,
+    ) -> None:
+        """Register TUI callbacks for real-time agent tracking."""
+        self._on_agent_start = on_agent_start
+        self._on_agent_end = on_agent_end
+        self._on_cycle_start = on_cycle_start
+        self._on_cycle_end = on_cycle_end
+
+    def _emit_agent_start(self, agent_name: str) -> None:
+        if self._on_agent_start:
+            try:
+                self._on_agent_start(agent_name)
+            except Exception:
+                pass
+
+    def _emit_agent_end(self, agent_name: str, detail: str = "") -> None:
+        if self._on_agent_end:
+            try:
+                self._on_agent_end(agent_name, detail)
+            except Exception:
+                pass
 
     def _handle_signal(self, sig, frame):
         console.print("\n[bold yellow]🛑 Shutdown signal received — finishing current cycle then stopping.[/bold yellow]")
@@ -323,14 +357,87 @@ class Orchestrator:
         )
         console.print(f"[blue]📤 Export written to[/blue] [bold]{exp_path.name}[/bold]")
 
+    def _verify_staged_files(self, written_files: list[dict]) -> tuple[list[dict], list[dict]]:
+        """
+        Verify staged files with lightweight syntax checks before promotion.
+        Returns (passed, failed) file lists.
+        """
+        import subprocess
+        staging_root = ADELIE_ROOT / "staging"
+        passed: list[dict] = []
+        failed: list[dict] = []
+
+        for finfo in written_files:
+            filepath = finfo.get("filepath", "")
+            if not filepath:
+                continue
+            staged_path = staging_root / filepath
+            if not staged_path.exists():
+                continue
+
+            ext = staged_path.suffix.lower()
+            error_msg = None
+
+            # Python: py_compile check
+            if ext == ".py":
+                try:
+                    result = subprocess.run(
+                        ["python3", "-m", "py_compile", str(staged_path)],
+                        capture_output=True, text=True, timeout=10,
+                    )
+                    if result.returncode != 0:
+                        error_msg = result.stderr[:200]
+                except Exception:
+                    pass  # If check fails, still promote
+
+            # JS/TS: node --check (only for .js — .ts needs tsc)
+            elif ext == ".js":
+                try:
+                    result = subprocess.run(
+                        ["node", "--check", str(staged_path)],
+                        capture_output=True, text=True, timeout=10,
+                    )
+                    if result.returncode != 0:
+                        error_msg = result.stderr[:200]
+                except Exception:
+                    pass
+
+            # JSON: parse check
+            elif ext == ".json":
+                try:
+                    import json as _json
+                    _json.loads(staged_path.read_text(encoding="utf-8"))
+                except (json.JSONDecodeError, Exception) as e:
+                    error_msg = str(e)[:200]
+
+            if error_msg:
+                failed.append({**finfo, "error": error_msg})
+                console.print(
+                    f"  [red]❌ Verify failed: {filepath}[/red] — {error_msg[:80]}"
+                )
+            else:
+                passed.append(finfo)
+
+        if failed:
+            console.print(
+                f"[yellow]⚠️  {len(failed)} file(s) failed verification, "
+                f"{len(passed)} file(s) passed[/yellow]"
+            )
+
+        return passed, failed
+
     def _promote_staged_files(self, written_files: list[dict]) -> int:
-        """Copy approved staged files from .adelie/staging/ to PROJECT_ROOT."""
+        """Copy verified staged files from .adelie/staging/ to PROJECT_ROOT."""
         import shutil
         staging_root = ADELIE_ROOT / "staging"
         if not staging_root.exists():
             return 0
+
+        # Verify before promoting
+        passed, failed = self._verify_staged_files(written_files)
+
         promoted = 0
-        for finfo in written_files:
+        for finfo in passed:
             filepath = finfo.get("filepath", "")
             if not filepath:
                 continue
@@ -424,6 +531,13 @@ class Orchestrator:
             f"phase=[magenta]{phase_label}[/magenta]"
         ))
 
+        # Emit TUI cycle-start callback
+        if self._on_cycle_start:
+            try:
+                self._on_cycle_start(self.loop_iteration, phase_label, self.state.value)
+            except Exception:
+                pass
+
         # Emit before-cycle hook
         self.hooks.emit(HookEvent.BEFORE_CYCLE, {
             "iteration": self.loop_iteration,
@@ -499,12 +613,15 @@ class Orchestrator:
         writer_output = None
         try:
             set_current_agent("writer")
+            self._emit_agent_start("Writer")
             writer_output = writer_ai.run(
                 system_state=system_state,
                 expert_output=self.last_expert_output,
                 loop_iteration=self.loop_iteration,
             )
             self.scheduler.mark_ran("writer", self.loop_iteration)
+            files_count = len(writer_output) if writer_output else 0
+            self._emit_agent_end("Writer", f"{files_count} file(s) written")
         except Exception as e:
             console.print(f"[red]❌ Writer AI failed: {e}[/red]")
             self._write_error_to_kb(e)
@@ -520,6 +637,7 @@ class Orchestrator:
         # ── Expert AI ─────────────────────────────────────────────────────────
         try:
             set_current_agent("expert")
+            self._emit_agent_start("Expert")
             decision = expert_ai.run(
                 system_state=system_state,
                 loop_iteration=self.loop_iteration,
@@ -527,6 +645,9 @@ class Orchestrator:
                 writer_output=writer_output,
             )
             self.scheduler.mark_ran("expert", self.loop_iteration)
+            action = decision.get("action", "CONTINUE")
+            coder_count = len(decision.get("coder_tasks", []))
+            self._emit_agent_end("Expert", f"{action}, {coder_count} coder task(s)")
         except Exception as e:
             console.print(f"[red]❌ Expert AI failed: {e}[/red]")
             self._write_error_to_kb(e)
@@ -666,6 +787,7 @@ class Orchestrator:
                     def _run_research():
                         from adelie.agents.research_ai import run as run_research
                         set_current_agent("research")
+                        self._emit_agent_start("Research")
                         return run_research(queries=research_queries, max_queries=5)
                     futures[pool.submit(_run_research)] = "research"
 
@@ -678,6 +800,7 @@ class Orchestrator:
                     def _run_coder():
                         from adelie.agents.coder_manager import run_coders
                         set_current_agent("coder")
+                        self._emit_agent_start("Coder")
                         return run_coders(coder_tasks, max_active_layer=max_layer)
                     futures[pool.submit(_run_coder)] = "coder"
 
@@ -689,12 +812,15 @@ class Orchestrator:
                             self.scheduler.mark_ran("research", self.loop_iteration)
                             loop_metrics["research_queries"] = len(research_queries)
                             loop_metrics["research_results"] = len(result) if result else 0
+                            self._emit_agent_end("Research", f"{len(result) if result else 0} result(s)")
                         elif agent_name == "coder":
                             if result and result.get("total_files", 0) > 0:
                                 all_written_files = self._collect_staged_files(coder_start_time)
                                 loop_metrics["files_written"] = len(all_written_files)
+                            self._emit_agent_end("Coder", f"{len(all_written_files)} file(s)")
                     except Exception as e:
                         console.print(f"[red]❌ {agent_name.title()} error: {e}[/red]")
+                        self._emit_agent_end(agent_name.title(), f"error: {e}")
 
             phase2_elapsed = time.time() - phase2_start
             loop_metrics["parallel_phases"].append({"phase": "2a", "agents": parallel_names, "time": round(phase2_elapsed, 1)})
@@ -716,6 +842,7 @@ class Orchestrator:
                 from adelie.agents.coder_manager import run_coders
                 from adelie.phases import PHASE_INFO
                 set_current_agent("reviewer")
+                self._emit_agent_start("Reviewer")
                 self.scheduler.mark_ran("reviewer", self.loop_iteration)
                 phase_info = PHASE_INFO.get(self.phase, {})
                 max_layer = phase_info.get("max_coder_layer", 0)
@@ -748,6 +875,9 @@ class Orchestrator:
                         loop_metrics["review_scores"].append(score)
             except Exception as e:
                 console.print(f"[red]❌ Reviewer error: {e}[/red]")
+                self._emit_agent_end("Reviewer", f"error: {e}")
+            else:
+                self._emit_agent_end("Reviewer", "approved" if reviewer_approved else "rejected")
         elif all_written_files and self.phase != "initial":
             # Reviewer not scheduled this cycle — auto-approve staged files
             reviewer_approved = True
@@ -809,6 +939,7 @@ class Orchestrator:
                         from adelie.agents.coder_manager import run_coders as _run_coders
                         from adelie.phases import PHASE_INFO
                         set_current_agent("tester")
+                        self._emit_agent_start("Tester")
                         MAX_TEST_FIX_RETRIES = 2
                         _phase_info = PHASE_INFO.get(self.phase, {})
                         _max_layer = _phase_info.get("max_coder_layer", 0)
@@ -859,6 +990,7 @@ class Orchestrator:
                     def _run_runner():
                         from adelie.agents.runner_ai import run_pipeline
                         set_current_agent("runner")
+                        self._emit_agent_start("Runner")
                         max_tier = "build"
                         if self.phase in ("mid_2", "late", "evolve"):
                             max_tier = "deploy"
@@ -876,14 +1008,17 @@ class Orchestrator:
                                 metrics = result.get("metrics", {})
                                 loop_metrics["tests_passed"] = metrics.get("passed", 0)
                                 loop_metrics["tests_total"] = metrics.get("total", 0)
+                            self._emit_agent_end("Tester", f"{loop_metrics['tests_passed']}/{loop_metrics['tests_total']} passed")
                         elif agent_name == "runner":
                             self.scheduler.mark_ran("runner", self.loop_iteration)
                             if result and result.get("errors"):
                                 self._last_build_errors = result["errors"]
                             elif result and result.get("failed", 0) == 0:
                                 self._last_build_errors = []  # 성공 시 초기화
+                            self._emit_agent_end("Runner", "ok" if not self._last_build_errors else f"{len(self._last_build_errors)} error(s)")
                     except Exception as e:
                         console.print(f"[red]❌ {agent_name.title()} error: {e}[/red]")
+                        self._emit_agent_end(agent_name.title(), f"error")
 
             phase3_elapsed = time.time() - phase3_start
             loop_metrics["parallel_phases"].append({"phase": "3", "agents": parallel_names, "time": round(phase3_elapsed, 1)})
@@ -919,6 +1054,7 @@ class Orchestrator:
                     def _run_monitor():
                         from adelie.agents.monitor_ai import run_health_check
                         set_current_agent("monitor")
+                        self._emit_agent_start("Monitor")
                         return run_health_check()
                     futures[pool.submit(_run_monitor)] = "monitor"
 
@@ -926,6 +1062,7 @@ class Orchestrator:
                     def _run_analyst():
                         from adelie.agents.analyst_ai import run_analysis
                         set_current_agent("analyst")
+                        self._emit_agent_start("Analyst")
                         return run_analysis(analysis_type="full")
                     futures[pool.submit(_run_analyst)] = "analyst"
 
@@ -936,10 +1073,14 @@ class Orchestrator:
                         if agent_name == "monitor":
                             self.scheduler.mark_ran("monitor", self.loop_iteration)
                             health_result = result
+                            overall = result.get("overall", "ok") if result else "ok"
+                            self._emit_agent_end("Monitor", overall)
                         elif agent_name == "analyst":
                             self.scheduler.mark_ran("analyst", self.loop_iteration)
+                            self._emit_agent_end("Analyst", "done")
                     except Exception as e:
                         console.print(f"[red]❌ {agent_name.title()} error: {e}[/red]")
+                        self._emit_agent_end(agent_name.title(), f"error")
 
             phase4_elapsed = time.time() - phase4_start
             loop_metrics["parallel_phases"].append({"phase": "4", "agents": parallel_names, "time": round(phase4_elapsed, 1)})

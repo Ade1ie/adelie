@@ -102,6 +102,19 @@ def _read_lower_layer_logs(layer: int) -> str:
 def _read_existing_files(workspace_root: Path, filepaths: list[str]) -> str:
     """Read existing source files from the workspace if they exist."""
     parts = []
+
+    # Auto-include key config files if not already in the list
+    key_configs = [
+        "package.json", "tsconfig.json", "vite.config.ts", "vite.config.js",
+        "index.html", "requirements.txt", "pyproject.toml",
+    ]
+    filepath_set = set(filepaths)
+    for cfg in key_configs:
+        if cfg not in filepath_set:
+            cfg_path = workspace_root / cfg
+            if cfg_path.exists():
+                filepaths = list(filepaths) + [cfg]
+
     for fp in filepaths:
         full = workspace_root / fp
         if full.exists() and full.is_file():
@@ -149,12 +162,20 @@ def run_coder(
     lower_logs = _read_lower_layer_logs(layer)
     existing = _read_existing_files(workspace_root, relevant_files or [])
 
+    # Get project file tree for context
+    try:
+        from adelie.project_context import get_tree_summary
+        project_tree = get_tree_summary()
+    except Exception:
+        project_tree = "(file tree unavailable)"
+
     user_prompt = (
         f"## Task\n{task}\n\n"
         f"## Layer\nThis is a Layer {layer} coder.\n"
         f"- Layer 0: Feature-level (individual features)\n"
         f"- Layer 1: Domain-level (connects features into backend/frontend/etc)\n"
         f"- Layer 2: Infrastructure-level (deployment, CI/CD, project config)\n\n"
+        f"## Project File Tree\n{project_tree}\n\n"
         f"## KB Context\n{context}\n\n"
         f"## Existing Source Files\n{existing}\n\n"
         f"## Lower Layer Coder Logs\n{lower_logs}\n\n"

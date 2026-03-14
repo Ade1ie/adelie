@@ -162,7 +162,7 @@ class TestGenerateWithFallback:
         with patch.object(lc, "_generate_with_model", return_value='{"result": "ok"}') as mock:
             result = lc.generate("sys", "user")
             assert result == '{"result": "ok"}'
-            mock.assert_called_once_with("gemini", "gemini-2.0-flash", "sys", "user", 0.3)
+            mock.assert_called_once_with("gemini", "gemini-2.0-flash", "sys", "user", 0.3, None)
 
     def test_fallback_on_rate_limit(self, monkeypatch):
         """Primary rate-limited → falls back to secondary."""
@@ -170,7 +170,7 @@ class TestGenerateWithFallback:
         monkeypatch.setattr(lc, "FALLBACK_MODELS", "gemini:model-a,ollama:model-b")
         monkeypatch.setattr(lc, "FALLBACK_COOLDOWN_SECONDS", 60)
 
-        def side_effect(provider, model, sys, usr, temp):
+        def side_effect(provider, model, sys, usr, temp, schema=None):
             if provider == "gemini" and model == "model-a":
                 raise _make_rate_limit_error()
             return '{"ok": true}'
@@ -185,7 +185,7 @@ class TestGenerateWithFallback:
         monkeypatch.setattr(lc, "FALLBACK_MODELS", "ollama:local,gemini:cloud")
         monkeypatch.setattr(lc, "FALLBACK_COOLDOWN_SECONDS", 60)
 
-        def side_effect(provider, model, sys, usr, temp):
+        def side_effect(provider, model, sys, usr, temp, schema=None):
             if provider == "ollama":
                 raise _make_connection_error()
             return '{"ok": true}'
@@ -205,7 +205,7 @@ class TestGenerateWithFallback:
 
         call_log = []
 
-        def side_effect(provider, model, sys, usr, temp):
+        def side_effect(provider, model, sys, usr, temp, schema=None):
             call_log.append((provider, model))
             return '{"ok": true}'
 
@@ -222,7 +222,7 @@ class TestGenerateWithFallback:
         monkeypatch.setattr(lc, "FALLBACK_MODELS", "gemini:model-a,ollama:model-b")
         monkeypatch.setattr(lc, "FALLBACK_COOLDOWN_SECONDS", 60)
 
-        def side_effect(provider, model, sys, usr, temp):
+        def side_effect(provider, model, sys, usr, temp, schema=None):
             if model == "model-a":
                 raise _make_rate_limit_error()
             raise _make_server_error()
@@ -237,7 +237,7 @@ class TestGenerateWithFallback:
         monkeypatch.setattr(lc, "FALLBACK_MODELS", "gemini:model-a,ollama:model-b")
         monkeypatch.setattr(lc, "FALLBACK_COOLDOWN_SECONDS", 60)
 
-        def side_effect(provider, model, sys, usr, temp):
+        def side_effect(provider, model, sys, usr, temp, schema=None):
             if provider == "gemini":
                 raise _make_auth_error()
             return '{"ok": true}'
@@ -252,7 +252,7 @@ class TestGenerateWithFallback:
         monkeypatch.setattr(lc, "FALLBACK_MODELS", "gemini:model-a,gemini:model-b")
         monkeypatch.setattr(lc, "FALLBACK_COOLDOWN_SECONDS", 60)
 
-        def side_effect(provider, model, sys, usr, temp):
+        def side_effect(provider, model, sys, usr, temp, schema=None):
             raise _make_auth_error()
 
         with patch.object(lc, "_generate_with_model", side_effect=side_effect):

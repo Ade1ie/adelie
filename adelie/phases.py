@@ -92,7 +92,11 @@ Your decision criteria in this phase:
 CODER TASK RULES FOR MID PHASE:
 - ⚠️ ONLY Layer 0 is active. ALL coder_tasks MUST have "layer": 0.
 - Do NOT assign layer 1 or layer 2 — they will produce ZERO output.
-- First priority: project scaffolding (package.json, tsconfig.json, config files).
+- ⚠️ FIRST CYCLE SCAFFOLDING: If project entry files (index.html, src/main.tsx,
+  vite.config.ts, package.json, tsconfig.json) DON'T EXIST, create a
+  "project_scaffolding" coder task as the FIRST task BEFORE any feature coders.
+  This coder must generate ALL missing entry/config files. This is MANDATORY.
+- Do NOT create feature coders until scaffolding is confirmed.
 - Then: individual feature implementations (one per coder task).
 - Each task should be self-contained — the coder creates files from scratch.
 - Be SPECIFIC: include exact filenames, tech stack, data models in task descriptions.""",

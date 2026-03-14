@@ -185,6 +185,90 @@ def _get_recent_build_errors() -> str:
     return content[:500]  # 토큰 제한
 
 
+def _get_scaffolding_need() -> str:
+    """
+    프로젝트 진입 파일 존재 여부 검사.
+    없으면 스캐폴딩 안내 반환, 전부 존재하면 빈 문자열.
+    """
+    from adelie.config import PROJECT_ROOT, WORKSPACE_PATH
+
+    # Detect project type from KB or existing files
+    project_root = PROJECT_ROOT
+    if not project_root.exists():
+        return ""
+
+    # Gather existing files for detection
+    existing = set()
+    for f in project_root.iterdir():
+        if f.is_file():
+            existing.add(f.name.lower())
+    src_dir = project_root / "src"
+    if src_dir.exists():
+        for f in src_dir.iterdir():
+            if f.is_file():
+                existing.add(f"src/{f.name}".lower())
+
+    # Define scaffolding checks per project type
+    checks: list[dict] = []
+
+    # React/Vite project detection
+    has_tsx = any(f.suffix in (".tsx", ".jsx") for f in project_root.rglob("*") if f.is_file())
+    has_ts = any(f.suffix == ".ts" for f in project_root.rglob("*") if f.is_file())
+    has_pkg = "package.json" in existing
+
+    if has_tsx or has_ts or has_pkg:
+        entry_files = {
+            "index.html": "Vite entry point — must reference src/main.tsx",
+            "package.json": "Node.js dependencies and scripts (npm run build, npm run dev)",
+            "tsconfig.json": "TypeScript compiler configuration",
+        }
+        # Check src/main.tsx or src/main.ts
+        has_main = (
+            (src_dir / "main.tsx").exists()
+            or (src_dir / "main.ts").exists()
+            or (src_dir / "main.jsx").exists()
+            or (src_dir / "main.js").exists()
+            or (src_dir / "index.tsx").exists()
+            or (src_dir / "index.ts").exists()
+        )
+        if not has_main:
+            entry_files["src/main.tsx"] = "React root render — ReactDOM.createRoot + App import"
+
+        has_vite_cfg = (
+            (project_root / "vite.config.ts").exists()
+            or (project_root / "vite.config.js").exists()
+        )
+        if not has_vite_cfg:
+            entry_files["vite.config.ts"] = "Vite build configuration with React plugin"
+
+        for fname, desc in entry_files.items():
+            path = project_root / fname
+            if not path.exists():
+                checks.append({"file": fname, "desc": desc})
+
+    # Python project detection
+    has_py = any(f.suffix == ".py" for f in project_root.rglob("*") if f.is_file())
+    if has_py and not (has_tsx or has_ts or has_pkg):
+        py_entries = {
+            "requirements.txt": "Python dependencies",
+        }
+        for fname, desc in py_entries.items():
+            if not (project_root / fname).exists():
+                checks.append({"file": fname, "desc": desc})
+
+    if not checks:
+        return ""
+
+    lines = [
+        "⚠️ CRITICAL: The following entry files are MISSING. Without them, the build WILL FAIL.",
+        "Create a 'project_scaffolding' coder task (layer 0) to generate these BEFORE any feature tasks:",
+    ]
+    for c in checks:
+        lines.append(f"  - {c['file']}: {c['desc']}")
+
+    return "\n".join(lines)
+
+
 def _validate_decision(decision: dict) -> bool:
     """Validate that a decision has required fields with valid values."""
     if not isinstance(decision, dict):
@@ -302,6 +386,9 @@ Total KB files across all categories: {total_kb_files}
 
 ## Coder Layer Constraints
 {layer_constraint}
+
+## ⚠️ Missing Project Entry Files (CREATE THESE FIRST)
+{_get_scaffolding_need()}
 
 ## This Cycle — Writer AI Output
 {writer_summary}

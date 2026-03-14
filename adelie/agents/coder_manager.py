@@ -298,6 +298,41 @@ def run_coders(
 
     _save_registry(registry)
 
+    # ── Dependency Sync ─────────────────────────────────────────────
+    if total_files > 0:
+        try:
+            from adelie.utils.dep_sync import scan_missing_deps, sync_package_json
+            from adelie.agents.coder_ai import STAGING_ROOT
+
+            staged_list = []
+            for layer_tasks in by_layer.values():
+                for t in layer_tasks:
+                    for r in t.get("_results", []):
+                        staged_list.append(r)
+
+            # Also scan all files in staging
+            if STAGING_ROOT.exists():
+                for f in STAGING_ROOT.rglob("*"):
+                    if f.is_file():
+                        rel = f.relative_to(STAGING_ROOT).as_posix()
+                        staged_list.append({"filepath": rel})
+
+            missing = scan_missing_deps(staged_list, STAGING_ROOT, workspace_root)
+            if missing:
+                added = sync_package_json(missing, workspace_root)
+                if added:
+                    console.print(
+                        f"  [yellow]📦 Dep sync: added {added} missing package(s) "
+                        f"to package.json: {', '.join(missing[:5])}[/yellow]"
+                    )
+                else:
+                    console.print(
+                        f"  [dim]📦 Missing deps detected (no package.json to update): "
+                        f"{', '.join(missing[:5])}[/dim]"
+                    )
+        except Exception as e:
+            console.print(f"  [dim]⚠️ Dep sync error: {e}[/dim]")
+
     summary = {
         "total_files": total_files,
         "coders_run": coders_run,

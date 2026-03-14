@@ -280,6 +280,7 @@ def _generate_with_model(
     system_prompt: str,
     user_prompt: str,
     temperature: float,
+    response_schema: dict | None = None,
 ) -> str:
     """
     Generate text using a specific provider/model.
@@ -288,7 +289,7 @@ def _generate_with_model(
     if provider == "ollama":
         return _generate_ollama_model(model, system_prompt, user_prompt, temperature)
     else:
-        return _generate_gemini_model(model, system_prompt, user_prompt, temperature)
+        return _generate_gemini_model(model, system_prompt, user_prompt, temperature, response_schema)
 
 
 def _generate_gemini_model(
@@ -296,19 +297,24 @@ def _generate_gemini_model(
     system_prompt: str,
     user_prompt: str,
     temperature: float,
+    response_schema: dict | None = None,
 ) -> str:
     """Call Gemini API with a specific model (no retry — handled by fallback)."""
     from google.genai import types as genai_types
 
     client = _get_gemini_client()
 
+    config_kwargs = {
+        "temperature": temperature,
+        "response_mime_type": "application/json",
+    }
+    if response_schema:
+        config_kwargs["response_schema"] = response_schema
+
     response = client.models.generate_content(
         model=model,
         contents=[system_prompt, user_prompt],
-        config=genai_types.GenerateContentConfig(
-            temperature=temperature,
-            response_mime_type="application/json",
-        ),
+        config=genai_types.GenerateContentConfig(**config_kwargs),
     )
 
     # Record usage
@@ -385,6 +391,7 @@ def generate(
     system_prompt: str,
     user_prompt: str,
     temperature: float = 0.3,
+    response_schema: dict | None = None,
 ) -> str:
     """
     Generate text from the configured LLM provider(s) with automatic fallback.
@@ -397,6 +404,7 @@ def generate(
         system_prompt: System-level instructions.
         user_prompt:   User-level prompt content.
         temperature:   Sampling temperature (0.0–1.0).
+        response_schema: Optional JSON schema dict to enforce structured output (Gemini only).
 
     Returns:
         Raw text response from the model.
@@ -425,7 +433,7 @@ def generate(
 
         try:
             result = _generate_with_model(
-                provider, model, system_prompt, user_prompt, temperature
+                provider, model, system_prompt, user_prompt, temperature, response_schema
             )
             # Success — clear any cooldown
             _record_success(provider, model)
