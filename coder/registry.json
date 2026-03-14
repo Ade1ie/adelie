@@ -1,0 +1,19 @@
+{
+  "coders": [
+    {
+      "layer": 1,
+      "name": "src",
+      "created": "2026-03-14T18:21:10",
+      "last_task": "Auto-assigned from project scan",
+      "last_run": "2026-03-14T18:21:10"
+    },
+    {
+      "layer": 0,
+      "name": "src_api",
+      "created": "2026-03-14T18:21:10",
+      "last_task": "Auto-assigned from project scan",
+      "last_run": "2026-03-14T18:21:10"
+    }
+  ],
+  "last_updated": "2026-03-14T18:21:10"
+}

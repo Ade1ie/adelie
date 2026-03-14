@@ -61,3 +61,13 @@ class TestRunnerAI:
             )
 
         assert result["executed"] == 0
+        assert result["errors"] == []
+
+    def test_returns_errors_on_failure(self):
+        """실패한 커맨드의 에러 정보가 반환 구조에 포함되는지 검증."""
+        result = {
+            "executed": 2, "succeeded": 1, "failed": 1,
+            "errors": [{"command": "npm run build", "stderr": "TS2304", "tier": "build", "returncode": 1}],
+        }
+        assert len(result["errors"]) == 1
+        assert "TS2304" in result["errors"][0]["stderr"]

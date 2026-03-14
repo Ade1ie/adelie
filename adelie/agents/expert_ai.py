@@ -111,6 +111,14 @@ CODER TASKS:
   Tasks assigned to higher layers WILL BE SKIPPED and produce ZERO output.
   If max active layer is 0, ALL tasks MUST be layer 0.
 
+CODER DEDUPLICATION RULES:
+- ⚠️ CHECK the "EXISTING CODERS" section below before creating ANY coder task.
+- If an existing coder already targets the SAME file or implements the SAME feature, 
+  REUSE that coder's exact name instead of creating a new one.
+- DO NOT create multiple coders for the same hook, component, or module.
+- Example: if "chess_logic_hook" exists, do NOT create "implement_useChessGame_hook".
+  Instead, reuse the name "chess_logic_hook".
+
 RESEARCH QUERIES:
 - When you need external information (latest docs, API references, best practices, library versions), add research_queries.
 - Research AI will perform web searches and store results in the KB for the next cycle.
@@ -120,6 +128,61 @@ RESEARCH QUERIES:
 """
 
 MAX_JSON_RETRIES = 2
+
+
+def _get_coder_registry_summary() -> str:
+    """코더 레지스트리를 요약 텍스트로 반환."""
+    from adelie.config import WORKSPACE_PATH
+
+    registry_path = WORKSPACE_PATH.parent / "coder" / "registry.json"
+    if not registry_path.exists():
+        return "(No coders registered yet.)"
+
+    try:
+        registry = json.loads(registry_path.read_text(encoding="utf-8"))
+    except Exception:
+        return "(Registry unreadable.)"
+
+    coders = registry.get("coders", [])
+    if not coders:
+        return "(No coders registered yet.)"
+
+    lines = [f"Total: {len(coders)} coder(s)"]
+    for c in coders[-15:]:  # 최근 15개만 (토큰 절약)
+        task_short = c.get("last_task", "")[:80]
+        lines.append(
+            f"  - [L{c.get('layer', '?')}] {c['name']}: {task_short}"
+        )
+
+    if len(coders) > 15:
+        lines.insert(1, f"  (showing last 15 of {len(coders)})")
+
+    return "\n".join(lines)
+
+
+def _get_recent_build_errors() -> str:
+    """최근 빌드 로그에서 실패 정보 추출."""
+    from adelie.config import WORKSPACE_PATH
+
+    runner_dir = WORKSPACE_PATH.parent / "runner"
+    if not runner_dir.exists():
+        return ""
+
+    # 최신 로그 파일 1개만 읽기
+    logs = sorted(runner_dir.glob("build_log_*.md"), reverse=True)
+    if not logs:
+        return ""
+
+    try:
+        content = logs[0].read_text(encoding="utf-8")
+    except Exception:
+        return ""
+
+    # 실패가 있는 경우만 반환
+    if "❌" not in content and "Failed" not in content:
+        return ""
+
+    return content[:500]  # 토큰 제한
 
 
 def _validate_decision(decision: dict) -> bool:
@@ -230,6 +293,12 @@ def run(
 Situation: {situation}
 Total KB files across all categories: {total_kb_files}
 {state_str}
+
+## Existing Coders (DO NOT duplicate these)
+{_get_coder_registry_summary()}
+
+## Recent Build/Test Errors (fix these in coder_tasks)
+{_get_recent_build_errors()}
 
 ## Coder Layer Constraints
 {layer_constraint}

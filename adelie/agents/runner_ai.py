@@ -330,7 +330,7 @@ def run_pipeline(
         )
     except Exception as e:
         console.print(f"[red]❌ Runner AI LLM error: {e}[/red]")
-        return {"executed": 0, "succeeded": 0, "failed": 0}
+        return {"executed": 0, "succeeded": 0, "failed": 0, "errors": []}
 
     # Parse
     try:
@@ -341,9 +341,9 @@ def run_pipeline(
             try:
                 data = json.loads(match.group())
             except json.JSONDecodeError:
-                return {"executed": 0, "succeeded": 0, "failed": 0}
+                return {"executed": 0, "succeeded": 0, "failed": 0, "errors": []}
         else:
-            return {"executed": 0, "succeeded": 0, "failed": 0}
+            return {"executed": 0, "succeeded": 0, "failed": 0, "errors": []}
 
     RUNNER_ROOT.mkdir(parents=True, exist_ok=True)
 
@@ -353,6 +353,7 @@ def run_pipeline(
     executed = 0
     succeeded = 0
     failed = 0
+    errors = []
     log_entries = []
 
     for tier in tier_order[:max_idx + 1]:
@@ -406,6 +407,13 @@ def run_pipeline(
                 console.print(f"  [red]❌ Failed (rc={result['returncode']})[/red]")
                 if result["stderr"]:
                     console.print(f"  [dim]{result['stderr'][:200]}[/dim]")
+                errors.append({
+                    "command": cmd,
+                    "description": desc,
+                    "tier": tier,
+                    "stderr": result.get("stderr", "")[:500],
+                    "returncode": result["returncode"],
+                })
 
             log_entries.append({
                 "tier": tier,
@@ -438,4 +446,4 @@ def run_pipeline(
         f"{succeeded}/{executed} succeeded, {failed} failed"
     )
 
-    return {"executed": executed, "succeeded": succeeded, "failed": failed}
+    return {"executed": executed, "succeeded": succeeded, "failed": failed, "errors": errors}

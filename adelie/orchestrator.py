@@ -97,6 +97,7 @@ class Orchestrator:
 
         # Assembled context tracking for after_cycle token monitoring
         self._last_assembled_contexts: list | None = None
+        self._last_build_errors: list[dict] = []
 
         # Auto-scan: if KB is empty and project has existing code, scan first
         self._auto_scan_done = False
@@ -131,6 +132,9 @@ class Orchestrator:
             state["phase_recommendation"] = self._phase_recommendation
             state["phase_recommendation_label"] = get_phase_label(self._phase_recommendation)
             state["phase_ready_count"] = self._phase_ready_count
+        # Include recent build errors for Expert AI context
+        if self._last_build_errors:
+            state["build_errors"] = self._last_build_errors[:3]  # 최대 3개
         return state
 
     def get_agent_context(self, agent_type: AgentType | str) -> dict:
@@ -874,6 +878,10 @@ class Orchestrator:
                                 loop_metrics["tests_total"] = metrics.get("total", 0)
                         elif agent_name == "runner":
                             self.scheduler.mark_ran("runner", self.loop_iteration)
+                            if result and result.get("errors"):
+                                self._last_build_errors = result["errors"]
+                            elif result and result.get("failed", 0) == 0:
+                                self._last_build_errors = []  # 성공 시 초기화
                     except Exception as e:
                         console.print(f"[red]❌ {agent_name.title()} error: {e}[/red]")
 

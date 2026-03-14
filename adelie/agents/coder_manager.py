@@ -13,6 +13,7 @@ tracks all active coders and their status.
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime
 from pathlib import Path
 
@@ -25,6 +26,83 @@ from adelie.kb import retriever
 console = Console()
 
 REGISTRY_PATH = CODER_ROOT / "registry.json"
+
+# ── Deduplication constants ────────────────────────────────────────────────────
+
+_STOP_WORDS = {
+    "the", "a", "an", "in", "to", "for", "of", "and", "or", "is", "it",
+    "this", "that", "with", "from", "use", "using", "create", "implement",
+    "ensure", "should", "must", "add", "update", "file", "component",
+}
+
+_DEDUP_THRESHOLD = 0.6  # Jaccard similarity >= 60% → duplicate
+MAX_CODERS_PER_FILE = 3
+
+
+def _tokenize(text: str) -> set[str]:
+    """텍스트를 소문자 키워드 집합으로 변환. 불용어(stop words) 제거."""
+    words = set(re.findall(r'[a-zA-Z_][a-zA-Z0-9_]*', text.lower()))
+    return words - _STOP_WORDS
+
+
+def _find_duplicate_coder(
+    registry: dict,
+    layer: int,
+    name: str,
+    task: str,
+) -> str | None:
+    """
+    기존 코더 중 동일/유사한 작업을 하는 코더를 찾아 이름을 반환.
+    없으면 None.
+
+    판정 기준:
+    1. 정확히 같은 이름 → 중복 (기존 로직 유지)
+    2. 같은 layer에서 task 키워드 Jaccard >= DEDUP_THRESHOLD → 중복
+    """
+    new_tokens = _tokenize(task)
+    if not new_tokens:
+        return None
+
+    for coder in registry.get("coders", []):
+        if coder["layer"] != layer:
+            continue
+
+        # 정확히 같은 이름
+        if coder["name"] == name:
+            return name
+
+        # 키워드 유사도
+        existing_tokens = _tokenize(coder.get("last_task", ""))
+        if not existing_tokens:
+            continue
+
+        intersection = new_tokens & existing_tokens
+        union = new_tokens | existing_tokens
+        jaccard = len(intersection) / len(union) if union else 0
+
+        if jaccard >= _DEDUP_THRESHOLD:
+            return coder["name"]
+
+    return None
+
+
+def _count_file_modifications(registry: dict, files: list[str]) -> int:
+    """
+    주어진 파일 목록과 겹치는 기존 코더 수를 반환.
+    coder task description 내 파일 경로 매칭 기반.
+    """
+    if not files:
+        return 0
+
+    file_basenames = {f.rsplit("/", 1)[-1].lower() for f in files}
+    count = 0
+
+    for coder in registry.get("coders", []):
+        task_lower = coder.get("last_task", "").lower()
+        if any(basename in task_lower for basename in file_basenames):
+            count += 1
+
+    return count
 
 
 def _load_registry() -> dict:
@@ -180,6 +258,23 @@ def run_coders(
             task_feedback = task_info.get("feedback")
 
             if not task_desc:
+                continue
+
+            # ── Dedup Check ────────────────────────────────────────
+            existing_name = _find_duplicate_coder(registry, layer_num, name, task_desc)
+            if existing_name and existing_name != name:
+                console.print(
+                    f"  [yellow]🔄 Dedup: '{name}' → reusing existing coder "
+                    f"'{existing_name}' (similar task)[/yellow]"
+                )
+                name = existing_name
+
+            # ── Per-file limit ─────────────────────────────────────
+            if relevant and _count_file_modifications(registry, relevant) >= MAX_CODERS_PER_FILE:
+                console.print(
+                    f"  [yellow]⏭ Skipped '{name}': target files modified "
+                    f"{MAX_CODERS_PER_FILE}+ times already[/yellow]"
+                )
                 continue
 
             # Find existing project files for context
