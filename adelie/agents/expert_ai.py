@@ -256,6 +256,60 @@ def _get_scaffolding_need() -> str:
             if not (project_root / fname).exists():
                 checks.append({"file": fname, "desc": desc})
 
+    # ── tsconfig.json deep validation ─────────────────────────────────
+    tsconfig_path = project_root / "tsconfig.json"
+    if tsconfig_path.exists():
+        try:
+            # Strip comments (tsconfig allows // comments)
+            raw = tsconfig_path.read_text(encoding="utf-8")
+            # Remove single-line comments
+            import re as _re
+            cleaned = _re.sub(r'//.*$', '', raw, flags=_re.MULTILINE)
+            tsconfig = json.loads(cleaned)
+
+            # Check "references" — e.g. [{"path": "./tsconfig.node.json"}]
+            for ref in tsconfig.get("references", []):
+                ref_path = ref.get("path", "")
+                if ref_path:
+                    ref_file = project_root / ref_path
+                    # If path is a directory, tsconfig.json is implied
+                    if not ref_file.exists() and not ref_file.with_suffix(".json").exists():
+                        checks.append({
+                            "file": ref_path,
+                            "desc": f"Referenced by tsconfig.json — must exist or build fails (TS6053)",
+                        })
+
+            # Check "extends" — e.g. "./tsconfig.node.json"
+            extends = tsconfig.get("extends", "")
+            if extends and not extends.startswith("@"):
+                ext_file = project_root / extends
+                if not ext_file.exists():
+                    checks.append({
+                        "file": extends,
+                        "desc": f"Extended by tsconfig.json — must exist or build fails",
+                    })
+
+            # Check "compilerOptions.types" → need @types/* in package.json
+            types_list = tsconfig.get("compilerOptions", {}).get("types", [])
+            if types_list and has_pkg:
+                try:
+                    pkg = json.loads((project_root / "package.json").read_text(encoding="utf-8"))
+                    all_deps = set(pkg.get("dependencies", {}).keys())
+                    all_deps |= set(pkg.get("devDependencies", {}).keys())
+
+                    for type_name in types_list:
+                        types_pkg = f"@types/{type_name}"
+                        if types_pkg not in all_deps:
+                            checks.append({
+                                "file": f"package.json (add {types_pkg})",
+                                "desc": f"tsconfig requires types '{type_name}' but {types_pkg} not in dependencies (TS2688)",
+                            })
+                except Exception:
+                    pass
+
+        except Exception:
+            pass  # tsconfig parse error — skip validation
+
     if not checks:
         return ""
 

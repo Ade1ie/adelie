@@ -240,8 +240,9 @@ def run_tests(
         if not filename or not content:
             continue
 
-        # Write test script
+        # Write test script (ensure parent dirs exist for nested paths)
         script_path = SCRIPTS_DIR / filename
+        script_path.parent.mkdir(parents=True, exist_ok=True)
         script_path.write_text(content, encoding="utf-8")
 
         # Build run command from actual saved path (don't trust LLM path)
@@ -250,7 +251,13 @@ def run_tests(
             python = env_profile.python_bin or "python"
             run_cmd = f"{python} -m pytest {script_path} -v --tb=short"
         elif lang in ("javascript", "js", "typescript", "ts"):
-            run_cmd = f"node {script_path}"
+            ext = script_path.suffix.lower()
+            if ext in (".ts", ".tsx", ".jsx"):
+                # TypeScript/JSX: use npx tsx to execute directly
+                # (vitest's include patterns conflict with Tester AI naming)
+                run_cmd = f"npx tsx {script_path}"
+            else:
+                run_cmd = f"node {script_path}"
         else:
             # Fall back to LLM-provided command if language unknown
             run_cmd = script.get("run_command", f"python {script_path}")

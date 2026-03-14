@@ -436,8 +436,17 @@ def run_pipeline(
         report += (
             f"## {icon} [{entry['tier'].upper()}] {entry['description']}\n"
             f"- Command: `{entry['command']}`\n"
-            f"- Return: {entry['result']['returncode']}\n\n"
+            f"- Return: {entry['result']['returncode']}\n"
         )
+        # Include error output for failed commands
+        if entry["result"]["returncode"] != 0:
+            stderr = entry["result"].get("stderr", "")
+            stdout = entry["result"].get("stdout", "")
+            if stderr:
+                report += f"- Stderr:\n```\n{stderr[:800]}\n```\n"
+            if stdout:
+                report += f"- Stdout:\n```\n{stdout[:400]}\n```\n"
+        report += "\n"
 
     log_path.write_text(report, encoding="utf-8")
 
