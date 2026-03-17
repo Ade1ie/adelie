@@ -882,6 +882,36 @@ class Orchestrator:
             # Reviewer not scheduled this cycle — auto-approve staged files
             reviewer_approved = True
 
+        # ── Cross-file import consistency check (before promotion) ─────────
+        if all_written_files and reviewer_approved:
+            try:
+                from adelie.utils.import_checker import check_imports, format_import_issues
+                from adelie.agents.coder_ai import STAGING_ROOT
+                import_issues = check_imports(all_written_files, STAGING_ROOT, PROJECT_ROOT)
+                if import_issues:
+                    console.print(
+                        f"[yellow]⚠️  Import checker found {len(import_issues)} issue(s)[/yellow]"
+                    )
+                    # Feed back to coder for one fix attempt
+                    feedback = format_import_issues(import_issues)
+                    if coder_tasks and self.phase != "initial":
+                        from adelie.agents.coder_manager import run_coders
+                        from adelie.phases import PHASE_INFO
+                        phase_info = PHASE_INFO.get(self.phase, {})
+                        max_layer = phase_info.get("max_coder_layer", 0)
+                        for task in coder_tasks:
+                            task["feedback"] = feedback
+                        try:
+                            fix_start = time.time()
+                            run_coders(coder_tasks, max_active_layer=max_layer)
+                            new_files = self._collect_staged_files(fix_start)
+                            if new_files:
+                                all_written_files = new_files
+                        except Exception as ie:
+                            console.print(f"[dim]⚠️ Import fix error: {ie}[/dim]")
+            except Exception as e:
+                console.print(f"[dim]⚠️ Import checker error: {e}[/dim]")
+
         # ── Promote staged files to project (after review) ────────────────
         if all_written_files and reviewer_approved:
             self._promote_staged_files(all_written_files)
@@ -1022,6 +1052,82 @@ class Orchestrator:
 
             phase3_elapsed = time.time() - phase3_start
             loop_metrics["parallel_phases"].append({"phase": "3", "agents": parallel_names, "time": round(phase3_elapsed, 1)})
+
+        # ══════════════════════════════════════════════════════════════════════
+        # PHASE 3b: Build Error → Coder Fix Retry (SEQUENTIAL)
+        # If Runner detected build errors, feed them back to Coder for
+        # same-cycle fix — mirrors the Tester AI retry pattern.
+        # ══════════════════════════════════════════════════════════════════════
+        MAX_BUILD_FIX_RETRIES = 2
+        if (
+            self._last_build_errors
+            and coder_tasks
+            and self.phase in ("mid_1", "mid_2", "late", "evolve")
+        ):
+            from adelie.agents.runner_ai import _diagnose_build_error
+            from adelie.agents.coder_manager import run_coders as _build_fix_coders
+            from adelie.agents.runner_ai import run_pipeline as _rerun_pipeline
+            from adelie.phases import PHASE_INFO as _PHASE_INFO
+            _bf_phase_info = _PHASE_INFO.get(self.phase, {})
+            _bf_max_layer = _bf_phase_info.get("max_coder_layer", 0)
+
+            for build_retry in range(MAX_BUILD_FIX_RETRIES):
+                # Format build errors as coder feedback
+                error_lines = ["## ⚠️ BUILD FAILURE — FIX THESE ERRORS\n"]
+                for err in self._last_build_errors:
+                    error_lines.append(f"### Command: `{err.get('command', '?')}`")
+                    error_lines.append(f"Error: {err.get('stderr', '')[:300]}")
+                    for diag in err.get("diagnostics", []):
+                        if diag.get("file"):
+                            error_lines.append(
+                                f"  - {diag['file']}:{diag.get('line', '?')} "
+                                f"[{diag.get('error_type', '')}] {diag.get('message', '')}"
+                            )
+                    error_lines.append("")
+                error_lines.append("Fix the source code to resolve ALL build errors.")
+                error_feedback = "\n".join(error_lines)
+
+                console.print(
+                    f"[yellow]🔧 Build fix retry {build_retry + 1}/{MAX_BUILD_FIX_RETRIES} — "
+                    f"feeding {len(self._last_build_errors)} error(s) back to coder[/yellow]"
+                )
+
+                for task in coder_tasks:
+                    task["feedback"] = error_feedback
+
+                try:
+                    set_current_agent("coder")
+                    fix_start_time = time.time()
+                    coder_result = _build_fix_coders(coder_tasks, max_active_layer=_bf_max_layer)
+                    if coder_result.get("total_files", 0) > 0:
+                        new_files = self._collect_staged_files(fix_start_time)
+                        if new_files:
+                            all_written_files = new_files
+                        self._promote_staged_files(all_written_files)
+                        self._cleanup_staging()
+
+                        # Re-run build
+                        set_current_agent("runner")
+                        max_tier = "build"
+                        if self.phase in ("mid_2", "late", "evolve"):
+                            max_tier = "deploy"
+                        runner_result = _rerun_pipeline(
+                            source_files=all_written_files, max_tier=max_tier
+                        )
+                        if runner_result and runner_result.get("errors"):
+                            self._last_build_errors = runner_result["errors"]
+                        else:
+                            self._last_build_errors = []
+                            console.print(
+                                f"[green]✅ Build fix succeeded on retry {build_retry + 1}[/green]"
+                            )
+                            break
+                    else:
+                        console.print("[dim]  No fix files generated — stopping retry[/dim]")
+                        break
+                except Exception as bfe:
+                    console.print(f"[red]❌ Build fix error: {bfe}[/red]")
+                    break
 
         # ══════════════════════════════════════════════════════════════════════
         # PHASE 4: Monitor AI + Analyst AI (PARALLEL — fully independent)

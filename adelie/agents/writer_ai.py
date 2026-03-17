@@ -147,19 +147,47 @@ Remember: output ONLY a valid JSON array.
 
     console.print(f"[cyan]📝 Writer AI[/cyan] generating knowledge updates (loop #{loop_iteration})…")
 
-    try:
-        raw = generate(
-            system_prompt=SYSTEM_PROMPT,
-            user_prompt=user_prompt,
-            temperature=0.4,
-        )
-        operations: list[dict] = json.loads(raw)
-    except json.JSONDecodeError as e:
-        console.print(f"[yellow]⚠️  Writer AI returned invalid JSON: {e}[/yellow]")
-        return []
-    except Exception as e:
-        console.print(f"[red]❌ Writer AI error: {e}[/red]")
-        raise
+    MAX_WRITER_JSON_RETRIES = 1
+    operations: list[dict] = []
+    current_prompt = user_prompt
+
+    for attempt in range(MAX_WRITER_JSON_RETRIES + 1):
+        try:
+            raw = generate(
+                system_prompt=SYSTEM_PROMPT,
+                user_prompt=current_prompt,
+                temperature=0.4,
+            )
+            operations = json.loads(raw)
+            if isinstance(operations, list):
+                break
+            console.print(f"[yellow]⚠️  Writer AI returned non-list JSON (attempt {attempt + 1}) — retrying.[/yellow]")
+            operations = []
+        except json.JSONDecodeError:
+            # Try regex extraction
+            match = re.search(r'\[.*\]', raw, re.DOTALL)
+            if match:
+                try:
+                    operations = json.loads(match.group())
+                    if isinstance(operations, list):
+                        break
+                except json.JSONDecodeError:
+                    pass
+
+            if attempt < MAX_WRITER_JSON_RETRIES:
+                console.print(f"[yellow]⚠️  Writer AI returned invalid JSON (retry {attempt + 1}).[/yellow]")
+                current_prompt = (
+                    user_prompt
+                    + "\n\n⚠️ PREVIOUS OUTPUT WAS NOT VALID JSON. "
+                    "Output ONLY a valid JSON array — no markdown fences, no extra text. "
+                    "The output must start with [ and end with ]."
+                )
+                continue
+            console.print(f"[yellow]⚠️  Writer AI JSON parse failed after retries — skipping.[/yellow]")
+            return []
+        except Exception as e:
+            console.print(f"[red]❌ Writer AI error: {e}[/red]")
+            raise
 
     if not isinstance(operations, list):
         console.print("[yellow]⚠️  Writer AI returned non-list JSON — skipping.[/yellow]")

@@ -118,7 +118,7 @@ def run_review(
         )
     except Exception as e:
         console.print(f"[red]❌ Reviewer AI error: {e}[/red]")
-        return {"overall_score": 0, "issues": [], "summary": f"Review failed: {e}", "approved": True}
+        return {"overall_score": 0, "issues": [], "summary": f"Review failed: {e} — rejecting for safety.", "approved": False}
 
     # Parse
     try:
@@ -129,9 +129,9 @@ def run_review(
             try:
                 result = json.loads(match.group())
             except json.JSONDecodeError:
-                result = {"overall_score": 5, "issues": [], "summary": "Could not parse review.", "approved": True}
+                result = {"overall_score": 0, "issues": [], "summary": "Could not parse review — rejecting for safety.", "approved": False}
         else:
-            result = {"overall_score": 5, "issues": [], "summary": "Could not parse review.", "approved": True}
+            result = {"overall_score": 0, "issues": [], "summary": "Could not parse review — rejecting for safety.", "approved": False}
 
     issues = result.get("issues", [])
     score = result.get("overall_score", 5)

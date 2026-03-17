@@ -103,3 +103,44 @@ class TestReviewerAI:
         result = rv.run_review(coder_name="empty", written_files=[], workspace_root=tmp_workspace)
         assert result["approved"] is True
         assert result["overall_score"] == 10
+
+    def test_json_parse_failure_rejects(self, tmp_workspace, monkeypatch):
+        """JSON 파싱 실패 시 approved: False 반환 — 안전 기본값."""
+        import adelie.agents.reviewer_ai as rv
+        monkeypatch.setattr(rv, "WORKSPACE_PATH", tmp_workspace / ".adelie" / "kb")
+        monkeypatch.setattr(rv, "REVIEW_ROOT", tmp_workspace / ".adelie" / "reviews")
+
+        (tmp_workspace / "src").mkdir(exist_ok=True)
+        (tmp_workspace / "src" / "app.py").write_text("x = 1\n", encoding="utf-8")
+
+        with patch("adelie.agents.reviewer_ai.generate") as mock_gen:
+            mock_gen.return_value = "NOT VALID JSON AT ALL"
+            result = rv.run_review(
+                coder_name="test",
+                written_files=[{"filepath": "src/app.py", "language": "python", "description": "App"}],
+                workspace_root=tmp_workspace,
+            )
+
+        assert result["approved"] is False
+        assert result["overall_score"] == 0
+        assert "safety" in result["summary"].lower()
+
+    def test_llm_error_rejects(self, tmp_workspace, monkeypatch):
+        """LLM 호출 실패 시 approved: False 반환 — 검증 우회 방지."""
+        import adelie.agents.reviewer_ai as rv
+        monkeypatch.setattr(rv, "WORKSPACE_PATH", tmp_workspace / ".adelie" / "kb")
+        monkeypatch.setattr(rv, "REVIEW_ROOT", tmp_workspace / ".adelie" / "reviews")
+
+        (tmp_workspace / "src").mkdir(exist_ok=True)
+        (tmp_workspace / "src" / "app.py").write_text("x = 1\n", encoding="utf-8")
+
+        with patch("adelie.agents.reviewer_ai.generate") as mock_gen:
+            mock_gen.side_effect = RuntimeError("API failure")
+            result = rv.run_review(
+                coder_name="test",
+                written_files=[{"filepath": "src/app.py", "language": "python", "description": "App"}],
+                workspace_root=tmp_workspace,
+            )
+
+        assert result["approved"] is False
+        assert result["overall_score"] == 0

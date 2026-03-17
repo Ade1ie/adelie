@@ -81,8 +81,11 @@ def _setup_env_from_workspace():
     if ws_root.exists():
         os.environ.setdefault("WORKSPACE_PATH", str(ws_root / "workspace"))
 
-    project_root = ws_root.parent if ws_root.name == ".adelie" else ws_root
-    env_file = project_root / ".env"
+    # Load .env from .adelie/ directory (priority), then project root
+    env_file = ws_root / ".env"
+    if not env_file.exists():
+        project_root = ws_root.parent if ws_root.name == ".adelie" else ws_root
+        env_file = project_root / ".env"
     if env_file.exists():
         load_dotenv(env_file)
 
@@ -334,14 +337,39 @@ def cmd_init(args: argparse.Namespace) -> None:
     if not config_path.exists() or args.force:
         config_path.write_text(json.dumps(default_config, indent=2, ensure_ascii=False), encoding="utf-8")
 
+    # ── Create .env template ─────────────────────────────────────────
+    env_file = adelie_dir / ".env"
+    if not env_file.exists() or args.force:
+        env_template = """# ── Adelie LLM Configuration ─────────────────────────────────────────
+# Provider: "gemini" or "ollama"
+LLM_PROVIDER=ollama
+
+# ── Gemini ───────────────────────────────────────────────────────────
+GEMINI_API_KEY=
+GEMINI_MODEL=gemini-2.0-flash
+
+# ── Ollama (로컬) ────────────────────────────────────────────────────
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_MODEL=llama3.2
+
+# ── Ollama Cloud (ollama.com 클라우드 사용 시) ────────────────────────
+# OLLAMA_BASE_URL=https://api.ollama.com
+# OLLAMA_API_KEY=your-ollama-cloud-api-key
+
+# ── Fallback Chain ───────────────────────────────────────────────────
+# FALLBACK_MODELS=gemini:gemini-2.5-flash,ollama:llama3.2
+"""
+        env_file.write_text(env_template, encoding="utf-8")
+
     gitignore = adelie_dir / ".gitignore"
     if not gitignore.exists():
-        gitignore.write_text("workspace/\nconfig.json\n", encoding="utf-8")
+        gitignore.write_text("workspace/\nconfig.json\n.env\n", encoding="utf-8")
 
     # Register in global registry
     registry.register(str(target))
 
     console.print("[green]  ✓[/green] Created .adelie/ workspace structure")
+    console.print("[green]  ✓[/green] Created .adelie/.env (LLM 설정)")
     console.print("[green]  ✓[/green] Created .adelie/specs/ (drop spec files here)")
     console.print("[green]  ✓[/green] Registered in global workspace list")
     console.print(f"\n[bold green]✅ Workspace initialized![/bold green]")

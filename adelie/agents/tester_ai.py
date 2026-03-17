@@ -189,29 +189,50 @@ def run_tests(
         f"Generate test scripts. Output a JSON object."
     )
 
-    try:
-        raw = generate(
-            system_prompt=SYSTEM_PROMPT,
-            user_prompt=user_prompt,
-            temperature=0.2,
-        )
-    except Exception as e:
-        console.print(f"[red]❌ Tester AI LLM error: {e}[/red]")
-        return {"total_tests": 0, "passed": 0, "failed": 0}
+    MAX_TESTER_JSON_RETRIES = 1
+    data = None
+    current_prompt = user_prompt
 
-    # Parse
-    try:
-        data = json.loads(raw)
-    except json.JSONDecodeError:
-        match = re.search(r"\{.*\}", raw, re.DOTALL)
-        if match:
-            try:
-                data = json.loads(match.group())
-            except json.JSONDecodeError:
-                console.print("[yellow]⚠️  Tester AI — invalid JSON[/yellow]")
-                return {"total_tests": 0, "passed": 0, "failed": 0}
-        else:
+    for attempt in range(MAX_TESTER_JSON_RETRIES + 1):
+        try:
+            raw = generate(
+                system_prompt=SYSTEM_PROMPT,
+                user_prompt=current_prompt,
+                temperature=0.2,
+            )
+        except Exception as e:
+            console.print(f"[red]❌ Tester AI LLM error: {e}[/red]")
             return {"total_tests": 0, "passed": 0, "failed": 0}
+
+        # Parse
+        try:
+            data = json.loads(raw)
+            if isinstance(data, dict):
+                break
+            console.print(f"[yellow]⚠️  Tester AI returned non-dict JSON (attempt {attempt + 1})[/yellow]")
+            data = None
+        except json.JSONDecodeError:
+            match = re.search(r"\{.*\}", raw, re.DOTALL)
+            if match:
+                try:
+                    data = json.loads(match.group())
+                    if isinstance(data, dict):
+                        break
+                except json.JSONDecodeError:
+                    pass
+
+            if attempt < MAX_TESTER_JSON_RETRIES:
+                console.print(f"[yellow]⚠️  Tester AI invalid JSON (retry {attempt + 1})[/yellow]")
+                current_prompt = (
+                    user_prompt
+                    + "\n\n⚠️ PREVIOUS OUTPUT WAS NOT VALID JSON. "
+                    "Output ONLY a valid JSON object — no markdown fences, no extra text."
+                )
+                continue
+            return {"total_tests": 0, "passed": 0, "failed": 0}
+
+    if not data or not isinstance(data, dict):
+        return {"total_tests": 0, "passed": 0, "failed": 0}
 
     scripts = data.get("test_scripts", [])
     if not scripts:

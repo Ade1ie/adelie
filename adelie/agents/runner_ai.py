@@ -58,6 +58,59 @@ EXEC_TIMEOUT_BUILD = 120
 EXEC_TIMEOUT_RUN = 10  # Short timeout — we just check if it starts
 EXEC_TIMEOUT_DEPLOY = 180
 
+
+def _diagnose_build_error(stderr: str, stdout: str = "") -> list[dict]:
+    """
+    Parse build error output to extract actionable file/line/error information.
+
+    Returns list of dicts: [{"file": ..., "line": ..., "error_type": ..., "message": ...}]
+    """
+    import re as _re
+    diagnostics: list[dict] = []
+    combined = (stderr + "\n" + stdout).strip()
+    if not combined:
+        return diagnostics
+
+    # TypeScript / ESBuild errors: src/App.tsx(12,5): error TS2304: ...
+    for m in _re.finditer(r'([^\s(]+\.\w+)\((\d+),\d+\):\s*error\s+(TS\d+):\s*(.+)', combined):
+        diagnostics.append({
+            "file": m.group(1), "line": int(m.group(2)),
+            "error_type": m.group(3), "message": m.group(4).strip(),
+        })
+
+    # TypeScript alt: src/App.tsx:12:5 - error TS2304: ...
+    for m in _re.finditer(r'([^\s:]+\.\w+):(\d+):\d+\s*-\s*error\s+(TS\d+):\s*(.+)', combined):
+        diagnostics.append({
+            "file": m.group(1), "line": int(m.group(2)),
+            "error_type": m.group(3), "message": m.group(4).strip(),
+        })
+
+    # Python SyntaxError: File "x.py", line 12
+    for m in _re.finditer(r'File "([^"]+)",\s*line\s*(\d+).*?(?:SyntaxError|IndentationError|NameError|ImportError|ModuleNotFoundError):\s*(.+)', combined, _re.DOTALL):
+        diagnostics.append({
+            "file": m.group(1), "line": int(m.group(2)),
+            "error_type": "PythonError", "message": m.group(3).strip()[:200],
+        })
+
+    # Node/JS errors: ERROR in ./src/App.tsx 12:5
+    for m in _re.finditer(r'ERROR\s+in\s+([^\s]+)\s+(\d+):\d+', combined):
+        diagnostics.append({
+            "file": m.group(1).lstrip("./"), "line": int(m.group(2)),
+            "error_type": "BundleError", "message": "",
+        })
+
+    # npm ERR! / general errors — capture first 3 lines
+    if not diagnostics:
+        lines = [l.strip() for l in combined.splitlines() if l.strip() and not l.startswith(">")]
+        error_lines = [l for l in lines if any(kw in l.lower() for kw in ["error", "failed", "cannot find", "not found"])]
+        for line in error_lines[:3]:
+            diagnostics.append({
+                "file": "", "line": 0,
+                "error_type": "BuildError", "message": line[:200],
+            })
+
+    return diagnostics[:10]  # Cap at 10
+
 SYSTEM_PROMPT = """You are Runner AI — a DevOps engineer in an autonomous AI loop.
 
 You receive the project's current source files and must generate commands to
@@ -412,7 +465,11 @@ def run_pipeline(
                     "description": desc,
                     "tier": tier,
                     "stderr": result.get("stderr", "")[:500],
+                    "stdout": result.get("stdout", "")[:500],
                     "returncode": result["returncode"],
+                    "diagnostics": _diagnose_build_error(
+                        result.get("stderr", ""), result.get("stdout", "")
+                    ),
                 })
 
             log_entries.append({

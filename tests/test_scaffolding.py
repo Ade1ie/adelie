@@ -67,3 +67,44 @@ class TestScaffoldingNeed:
         result = _get_scaffolding_need()
 
         assert result == ""
+
+    def test_detects_missing_tsconfig_references(self, tmp_project):
+        """tsconfig.json referencing nonexistent tsconfig.node.json is caught."""
+        import json
+        src = tmp_project / "src"
+        src.mkdir()
+        (src / "App.tsx").write_text("export default function App() {}")
+        (src / "main.tsx").write_text("ReactDOM.createRoot()")
+        (tmp_project / "index.html").write_text("<html></html>")
+        (tmp_project / "package.json").write_text(json.dumps({"dependencies": {}}))
+        (tmp_project / "vite.config.ts").write_text("export default {}")
+        (tmp_project / "tsconfig.json").write_text(json.dumps({
+            "compilerOptions": {},
+            "references": [{"path": "./tsconfig.node.json"}]
+        }))
+
+        from adelie.agents.expert_ai import _get_scaffolding_need
+        result = _get_scaffolding_need()
+
+        assert "tsconfig.node.json" in result
+        assert "TS6053" in result
+
+    def test_detects_missing_types_packages(self, tmp_project):
+        """tsconfig types: ['node'] without @types/node is caught."""
+        import json
+        src = tmp_project / "src"
+        src.mkdir()
+        (src / "App.tsx").write_text("export default function App() {}")
+        (src / "main.tsx").write_text("ReactDOM.createRoot()")
+        (tmp_project / "index.html").write_text("<html></html>")
+        (tmp_project / "package.json").write_text(json.dumps({"dependencies": {}}))
+        (tmp_project / "vite.config.ts").write_text("export default {}")
+        (tmp_project / "tsconfig.json").write_text(json.dumps({
+            "compilerOptions": {"types": ["node"]}
+        }))
+
+        from adelie.agents.expert_ai import _get_scaffolding_need
+        result = _get_scaffolding_need()
+
+        assert "@types/node" in result
+        assert "TS2688" in result

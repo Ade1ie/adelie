@@ -2,11 +2,15 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 
-# Load .env from user's project directory first, then fallback to package root
+# Load .env — prioritize .adelie/.env, then project root .env
 _user_cwd = Path(os.environ.get("ADELIE_CWD", os.getcwd())).resolve()
-_env_file = _user_cwd / ".env"
-if _env_file.exists():
-    load_dotenv(_env_file)
+_adelie_env = _user_cwd / ".adelie" / ".env"
+_root_env = _user_cwd / ".env"
+
+if _adelie_env.exists():
+    load_dotenv(_adelie_env)
+elif _root_env.exists():
+    load_dotenv(_root_env)
 else:
     load_dotenv()  # fallback: search from cwd upward
 
@@ -20,6 +24,7 @@ GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
 # ── Ollama ──────────────────────────────────────────────────────────────────
 OLLAMA_BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "llama3.2")
+OLLAMA_API_KEY: str = os.getenv("OLLAMA_API_KEY", "")  # For Ollama Cloud
 
 # ── Model Fallback ───────────────────────────────────────────────────────────
 # Comma-separated fallback chain, e.g. "gemini:gemini-2.5-flash,gemini:gemini-2.0-flash,ollama:llama3.2"

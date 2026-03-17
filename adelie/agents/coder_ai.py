@@ -189,41 +189,61 @@ def run_coder(
 
     user_prompt += "Generate the source code files. Output a JSON array."
 
-    # Call LLM
-    try:
-        raw = generate(
-            system_prompt=SYSTEM_PROMPT,
-            user_prompt=user_prompt,
-            temperature=0.2,
-        )
-    except Exception as e:
-        console.print(f"[red]❌ Coder [{layer}] {coder_name} LLM error: {e}[/red]")
-        return []
+    # Call LLM with retry on JSON parse failure
+    MAX_CODER_JSON_RETRIES = 1
+    operations = None
+    current_prompt = user_prompt
 
-    # Parse response
-    try:
-        operations = json.loads(raw)
-    except json.JSONDecodeError:
-        # Try to extract JSON array from response
-        match = re.search(r"\[.*\]", raw, re.DOTALL)
-        if match:
-            try:
-                operations = json.loads(match.group())
-            except json.JSONDecodeError:
+    for attempt in range(MAX_CODER_JSON_RETRIES + 1):
+        try:
+            raw = generate(
+                system_prompt=SYSTEM_PROMPT,
+                user_prompt=current_prompt,
+                temperature=0.2,
+            )
+        except Exception as e:
+            console.print(f"[red]❌ Coder [{layer}] {coder_name} LLM error: {e}[/red]")
+            return []
+
+        # Parse response
+        try:
+            operations = json.loads(raw)
+            if isinstance(operations, list):
+                break
+            else:
                 console.print(
-                    f"[yellow]⚠️  Coder [{layer}] {coder_name} — invalid JSON response[/yellow]"
+                    f"[yellow]⚠️  Coder [{layer}] {coder_name} — response is not a list (attempt {attempt + 1})[/yellow]"
                 )
-                return []
-        else:
+                operations = None
+        except json.JSONDecodeError:
+            # Try to extract JSON array from response
+            match = re.search(r"\[.*\]", raw, re.DOTALL)
+            if match:
+                try:
+                    operations = json.loads(match.group())
+                    if isinstance(operations, list):
+                        break
+                except json.JSONDecodeError:
+                    pass
+
+            if attempt < MAX_CODER_JSON_RETRIES:
+                console.print(
+                    f"[yellow]⚠️  Coder [{layer}] {coder_name} — invalid JSON (retry {attempt + 1})[/yellow]"
+                )
+                current_prompt = (
+                    user_prompt
+                    + "\n\n⚠️ PREVIOUS OUTPUT WAS NOT VALID JSON. "
+                    "Output ONLY a raw JSON array — no markdown fences, no extra text. "
+                    "The output must start with [ and end with ]."
+                )
+                continue
+
             console.print(
-                f"[yellow]⚠️  Coder [{layer}] {coder_name} — no JSON array found[/yellow]"
+                f"[yellow]⚠️  Coder [{layer}] {coder_name} — JSON parse failed after retries[/yellow]"
             )
             return []
 
-    if not isinstance(operations, list):
-        console.print(
-            f"[yellow]⚠️  Coder [{layer}] {coder_name} — response is not a list[/yellow]"
-        )
+    if not operations or not isinstance(operations, list):
         return []
 
     # Write files
