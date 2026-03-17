@@ -27,6 +27,8 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
+from adelie.i18n import t
+
 console = Console()
 
 # ── Workspace detection ──────────────────────────────────────────────────────
@@ -62,15 +64,35 @@ def _save_workspace_config(config: dict) -> None:
     config_path.write_text(json.dumps(config, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
+def _update_env_file(updates: dict) -> None:
+    """Update key=value pairs in .adelie/.env file."""
+    ws_root = _find_workspace_root()
+    env_path = ws_root / ".env"
+    if not env_path.exists():
+        # Create minimal .env if missing
+        lines = []
+    else:
+        lines = env_path.read_text(encoding="utf-8").splitlines()
+
+    for key, value in updates.items():
+        found = False
+        for i, line in enumerate(lines):
+            stripped = line.strip()
+            if stripped.startswith(f"{key}=") or stripped.startswith(f"# {key}="):
+                lines[i] = f"{key}={value}"
+                found = True
+                break
+        if not found:
+            lines.append(f"{key}={value}")
+
+    env_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 def _setup_env_from_workspace():
     """Apply workspace config.json values as environment variables."""
     ws_config = _load_workspace_config()
+    # Only non-LLM settings from config.json (LLM settings are in .env)
     env_map = {
-        "provider": "LLM_PROVIDER",
-        "gemini_api_key": "GEMINI_API_KEY",
-        "gemini_model": "GEMINI_MODEL",
-        "ollama_base_url": "OLLAMA_BASE_URL",
-        "ollama_model": "OLLAMA_MODEL",
         "loop_interval": "LOOP_INTERVAL_SECONDS",
     }
     for key, env_key in env_map.items():
@@ -104,7 +126,7 @@ def _validate_provider() -> None:
     if cfg.LLM_PROVIDER == "gemini":
         if not cfg.GEMINI_API_KEY:
             console.print(
-                "[bold red]❌ GEMINI_API_KEY is not set.[/bold red]\n"
+                "[bold red]ERROR: GEMINI_API_KEY is not set.[/bold red]\n"
                 "Set it with: [bold]adelie config --api-key YOUR_KEY[/bold]\n"
                 "Or switch to Ollama: [bold]adelie config --provider ollama[/bold]"
             )
@@ -115,7 +137,7 @@ def _validate_provider() -> None:
             requests.get(f"{cfg.OLLAMA_BASE_URL}/api/tags", timeout=3).raise_for_status()
         except Exception:
             console.print(
-                f"[bold red]❌ Cannot connect to Ollama at {cfg.OLLAMA_BASE_URL}[/bold red]\n"
+                f"[bold red]ERROR: Cannot connect to Ollama at {cfg.OLLAMA_BASE_URL}[/bold red]\n"
                 "Start Ollama with: [bold]ollama serve[/bold]"
             )
             sys.exit(1)
@@ -129,7 +151,7 @@ def _validate_provider() -> None:
 def cmd_help(args: argparse.Namespace) -> None:
     """Show detailed help for all commands."""
     help_text = """
-[bold cyan]🐧 Adelie — Command Reference[/bold cyan]
+[bold cyan]Adelie — Command Reference[/bold cyan]
 
 [bold]Workspace[/bold]
   [green]adelie init[/green] [dim][dir][/dim]             Initialize workspace in directory (default: .)
@@ -148,6 +170,7 @@ def cmd_help(args: argparse.Namespace) -> None:
   [green]adelie config --interval[/green] [dim]60[/dim]     Set loop interval (seconds)
   [green]adelie config --api-key[/green] [dim]KEY[/dim]     Set Gemini API key
   [green]adelie config --ollama-url[/green] [dim]URL[/dim]  Set Ollama server URL
+  [green]adelie config --lang[/green] [dim]ko|en[/dim]      Set display language
 
 [bold]Monitoring[/bold]
   [green]adelie status[/green]                    System health & provider status
@@ -247,7 +270,7 @@ def _sync_specs() -> None:
             else:
                 new_count += 1
         except Exception as e:
-            console.print(f"[yellow]⚠️  Failed to sync {file_path.name}: {e}[/yellow]")
+            console.print(f"[yellow]WARN: Failed to sync {file_path.name}: {e}[/yellow]")
 
     # Save manifest
     if new_count > 0 or updated_count > 0:
@@ -259,7 +282,7 @@ def _sync_specs() -> None:
             parts.append(f"{new_count} new")
         if updated_count:
             parts.append(f"{updated_count} updated")
-        console.print(f"[green]📄 Auto-synced specs: {', '.join(parts)}[/green]")
+        console.print(f"[green]  > Auto-synced specs: {', '.join(parts)}[/green]")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -275,23 +298,23 @@ def cmd_init(args: argparse.Namespace) -> None:
     adelie_dir = target / ".adelie"
 
     if adelie_dir.exists() and not args.force:
-        console.print(f"[yellow]⚠️  .adelie/ already exists in {target}[/yellow]")
-        console.print("[dim]   Use --force to reinitialize[/dim]")
+        console.print(f"[yellow]WARN: {t('init.already_exists')} — {target}[/yellow]")
+        console.print(f"[dim]   {t('init.use_force')}[/dim]")
         return
 
-    console.print(f"[bold cyan]🐧 Adelie — Initializing workspace[/bold cyan]")
-    console.print(f"   [dim]Directory: {target}[/dim]")
+    console.print(f"[bold cyan]{t('init.title')}[/bold cyan]")
+    console.print(f"   [dim]{t('init.dir')}: {target}[/dim]")
 
     # ── Detect existing project ──────────────────────────────────────────
     project_info = _detect_project(target)
     if project_info["is_existing"]:
-        console.print(f"[green]  ✓[/green] Detected existing project")
+        console.print(f"[green]  +[/green] {t('init.detected')}")
         if project_info.get("name"):
-            console.print(f"    Name: [bold]{project_info['name']}[/bold]")
+            console.print(f"    {t('init.name')}: [bold]{project_info['name']}[/bold]")
         if project_info.get("languages"):
-            console.print(f"    Languages: {', '.join(project_info['languages'])}")
+            console.print(f"    {t('init.languages')}: {', '.join(project_info['languages'])}")
         if project_info.get("frameworks"):
-            console.print(f"    Frameworks: {', '.join(project_info['frameworks'])}")
+            console.print(f"    {t('init.frameworks')}: {', '.join(project_info['frameworks'])}")
 
     # ── Create workspace structure ───────────────────────────────────────
     categories = ["skills", "dependencies", "errors", "logic", "exports", "maintenance"]
@@ -309,18 +332,13 @@ def cmd_init(args: argparse.Namespace) -> None:
 
     # ── Create config ────────────────────────────────────────────────────
     default_config = {
-        "provider": "ollama",
-        "ollama_base_url": "http://localhost:11434",
-        "ollama_model": "gemma3:12b",
-        "gemini_api_key": "",
-        "gemini_model": "gemini-2.0-flash",
         "loop_interval": 30,
     }
 
     # If existing project with code, start from MID phase
     if project_info["is_existing"] and project_info.get("has_code"):
         default_config["phase"] = "mid"
-        console.print(f"[green]  ✓[/green] Phase set to 🔨 중기 (existing code detected)")
+        console.print(f"[green]  +[/green] {t('init.phase_mid')}")
     else:
         default_config["phase"] = "initial"
 
@@ -368,15 +386,15 @@ OLLAMA_MODEL=llama3.2
     # Register in global registry
     registry.register(str(target))
 
-    console.print("[green]  ✓[/green] Created .adelie/ workspace structure")
-    console.print("[green]  ✓[/green] Created .adelie/.env (LLM 설정)")
-    console.print("[green]  ✓[/green] Created .adelie/specs/ (drop spec files here)")
-    console.print("[green]  ✓[/green] Registered in global workspace list")
-    console.print(f"\n[bold green]✅ Workspace initialized![/bold green]")
+    console.print(f"[green]  +[/green] {t('init.created_ws')}")
+    console.print(f"[green]  +[/green] {t('init.created_env')}")
+    console.print(f"[green]  +[/green] {t('init.created_specs')}")
+    console.print(f"[green]  +[/green] {t('init.registered')}")
+    console.print(f"\n[bold green]{t('init.done')}[/bold green]")
     console.print(f"\n  adelie config                    [dim]# View settings[/dim]")
     console.print(f"  adelie run --goal \"your goal\"     [dim]# Start AI loop[/dim]")
     console.print(f"  adelie ws                         [dim]# List all workspaces[/dim]")
-    console.print(f"\n  [dim]📄 Spec files: .adelie/specs/ 에 MD/PDF/DOCX 파일을 넣으면 자동 인식됩니다[/dim]")
+    console.print(f"\n  [dim]{t('init.specs_hint')}[/dim]")
 
 
 def _detect_project(target: Path) -> dict:
@@ -443,41 +461,41 @@ def cmd_ws(args: argparse.Namespace) -> None:
 
     if args.ws_action == "remove":
         if args.number is None:
-            console.print("[red]❌ Specify workspace number: adelie ws remove <N>[/red]")
+            console.print(f"[red]ERROR: Specify workspace number: adelie ws remove <N>[/red]")
             return
 
         # Get workspace info before removing
         ws = registry.get_by_index(args.number)
         if not ws:
-            console.print(f"[red]❌ Invalid workspace number: {args.number}[/red]")
+            console.print(f"[red]ERROR: Invalid workspace number: {args.number}[/red]")
             return
 
         ws_path = Path(ws["path"])
         adelie_dir = ws_path / ".adelie"
 
         if registry.remove(args.number):
-            console.print(f"[green]✅ Workspace #{args.number} removed from registry[/green]")
+            console.print(f"[green]OK: {t('ws.removed', n=args.number)}[/green]")
 
             # Ask if user wants to delete .adelie files too
             if adelie_dir.exists():
-                answer = input(f"   🗑️  Also delete .adelie data at {adelie_dir}? (y/N): ").strip().lower()
+                answer = input(f"   {t('ws.delete_data')}").strip().lower()
                 if answer == "y":
                     import shutil
                     shutil.rmtree(adelie_dir, ignore_errors=True)
-                    console.print(f"   [dim]🗑️  Deleted {adelie_dir}[/dim]")
+                    console.print(f"   [dim]Deleted {adelie_dir}[/dim]")
                 else:
-                    console.print(f"   [dim]📁 .adelie data kept at {adelie_dir}[/dim]")
+                    console.print(f"   [dim].adelie data kept at {adelie_dir}[/dim]")
         else:
-            console.print(f"[red]❌ Failed to remove workspace #{args.number}[/red]")
+            console.print(f"[red]ERROR: Failed to remove workspace #{args.number}[/red]")
         return
 
     workspaces = registry.get_all()
     if not workspaces:
-        console.print("[yellow]No workspaces registered yet.[/yellow]")
+        console.print(f"[yellow]{t('ws.none')}[/yellow]")
         console.print("[dim]Initialize one with: adelie init[/dim]")
         return
 
-    table = Table(title="🐧 Adelie Workspaces", show_header=True, border_style="cyan")
+    table = Table(title=t('ws.title'), show_header=True, border_style="cyan")
     table.add_column("#", style="bold cyan", justify="right")
     table.add_column("Directory", style="bold")
     table.add_column("Last Goal", max_width=40)
@@ -503,29 +521,29 @@ def cmd_run(args: argparse.Namespace) -> None:
     if args.workspace_num is not None:
         ws = registry.get_by_index(args.workspace_num)
         if not ws:
-            console.print(f"[red]❌ Workspace #{args.workspace_num} not found. Use 'adelie ws' to list.[/red]")
+            console.print(f"[red]ERROR: {t('run.ws_not_found', n=args.workspace_num)}[/red]")
             sys.exit(1)
 
         ws_path = ws["path"]
         adelie_dir = Path(ws_path) / ".adelie"
         if not adelie_dir.exists():
-            console.print(f"[red]❌ .adelie/ not found in {ws_path}[/red]")
+            console.print(f"[red]ERROR: .adelie/ not found in {ws_path}[/red]")
             sys.exit(1)
 
         # Set environment to target workspace
         os.environ["ADELIE_CWD"] = ws_path
         os.environ["WORKSPACE_PATH"] = str(adelie_dir / "workspace")
 
-        # Load that workspace's config
+        # Load that workspace's .env for LLM settings
+        ws_env_file = adelie_dir / ".env"
+        if ws_env_file.exists():
+            load_dotenv(ws_env_file, override=True)
+
+        # Load non-LLM settings from config.json
         config_path = adelie_dir / "config.json"
         if config_path.exists():
             ws_config = json.loads(config_path.read_text(encoding="utf-8"))
             env_map = {
-                "provider": "LLM_PROVIDER",
-                "gemini_api_key": "GEMINI_API_KEY",
-                "gemini_model": "GEMINI_MODEL",
-                "ollama_base_url": "OLLAMA_BASE_URL",
-                "ollama_model": "OLLAMA_MODEL",
                 "loop_interval": "LOOP_INTERVAL_SECONDS",
             }
             for key, env_key in env_map.items():
@@ -537,7 +555,7 @@ def cmd_run(args: argparse.Namespace) -> None:
         if goal == "Operate and improve the Adelie autonomous AI system" and ws.get("last_goal"):
             goal = ws["last_goal"]
 
-        console.print(f"[bold cyan]🐧 Resuming workspace #{args.workspace_num}[/bold cyan]")
+        console.print(f"[bold cyan]{t('run.resuming', n=args.workspace_num)}[/bold cyan]")
         console.print(f"   [dim]{ws_path}[/dim]")
 
         registry.update_last_used(ws_path, goal)
@@ -578,7 +596,7 @@ def cmd_status(args: argparse.Namespace) -> None:
 
     retriever.ensure_workspace()
 
-    table = Table(title="🐧 Adelie Status", show_header=False, border_style="cyan")
+    table = Table(title=t('status.title'), show_header=False, border_style="cyan")
     table.add_column("Key", style="bold")
     table.add_column("Value")
 
@@ -595,21 +613,21 @@ def cmd_status(args: argparse.Namespace) -> None:
 
     if cfg.LLM_PROVIDER == "gemini":
         if cfg.GEMINI_API_KEY:
-            console.print("[green]✅ Gemini API key configured[/green]")
+            console.print(f"[green]OK: {t('status.gemini_ok')}[/green]")
         else:
-            console.print("[red]❌ GEMINI_API_KEY not set[/red]")
+            console.print(f"[red]ERROR: {t('status.gemini_missing')}[/red]")
     elif cfg.LLM_PROVIDER == "ollama":
         import requests
         try:
             r = requests.get(f"{cfg.OLLAMA_BASE_URL}/api/tags", timeout=3)
             r.raise_for_status()
             models = [m["name"] for m in r.json().get("models", [])]
-            console.print(f"[green]✅ Ollama connected — {len(models)} model(s) available[/green]")
+            console.print(f"[green]OK: {t('status.ollama_ok', n=len(models))}[/green]")
             for m in models:
                 marker = "  →" if cfg.OLLAMA_MODEL in m else "   "
                 console.print(f"[dim]{marker} {m}[/dim]")
         except Exception:
-            console.print(f"[red]❌ Cannot connect to Ollama at {cfg.OLLAMA_BASE_URL}[/red]")
+            console.print(f"[red]ERROR: {t('status.ollama_fail', url=cfg.OLLAMA_BASE_URL)}[/red]")
 
 
 def cmd_phase(args: argparse.Namespace) -> None:
@@ -621,19 +639,19 @@ def cmd_phase(args: argparse.Namespace) -> None:
     if args.phase_action == "set":
         valid = [p.value for p in Phase]
         if args.phase_value not in valid:
-            console.print(f"[red]❌ Invalid phase. Choose from: {', '.join(valid)}[/red]")
+            console.print(f"[red]ERROR: Invalid phase. Choose from: {', '.join(valid)}[/red]")
             return
         ws_config["phase"] = args.phase_value
         _save_workspace_config(ws_config)
         label = get_phase_label(args.phase_value)
-        console.print(f"[green]✅ Phase set → {label}[/green]")
+        console.print(f"[green]OK: Phase set → {label}[/green]")
         return
 
     # Show current phase with full lifecycle visualization
     current = ws_config.get("phase", "initial")
     phases = get_all_phases()
 
-    console.print(f"\n[bold cyan]🐧 Adelie — Project Phase[/bold cyan]\n")
+    console.print(f"\n[bold cyan]Adelie — Project Phase[/bold cyan]\n")
 
     for value, label in phases:
         if value == current:
@@ -669,69 +687,100 @@ def cmd_inform(args: argparse.Namespace) -> None:
     console.print()
     from rich.markdown import Markdown
     console.print(Markdown(report))
-    console.print(f"\n[dim]📄 Full report saved to: {cfg.WORKSPACE_PATH / 'exports' / 'status_report.md'}[/dim]")
+    console.print(f"\n[dim]Full report saved to: {cfg.WORKSPACE_PATH / 'exports' / 'status_report.md'}[/dim]")
 
 
 def cmd_config(args: argparse.Namespace) -> None:
     """View or update configuration."""
     _ensure_adelie_config()
+    import adelie.config as cfg
     ws_config = _load_workspace_config()
-    changed = False
+    env_updates = {}
+    config_changed = False
 
     if args.provider:
         provider = args.provider.lower()
         if provider not in ("gemini", "ollama"):
-            console.print("[red]❌ Provider must be 'gemini' or 'ollama'[/red]")
+            console.print("[red]ERROR: Provider must be 'gemini' or 'ollama'[/red]")
             sys.exit(1)
-        ws_config["provider"] = provider
-        console.print(f"[green]✅ provider → {provider}[/green]")
-        changed = True
+        env_updates["LLM_PROVIDER"] = provider
+        console.print(f"[green]OK: provider → {provider}[/green]")
 
     if args.model:
-        provider = ws_config.get("provider", "gemini")
+        provider = env_updates.get("LLM_PROVIDER", cfg.LLM_PROVIDER)
         if provider == "ollama":
-            ws_config["ollama_model"] = args.model
-            console.print(f"[green]✅ ollama_model → {args.model}[/green]")
+            env_updates["OLLAMA_MODEL"] = args.model
+            console.print(f"[green]OK: ollama_model → {args.model}[/green]")
         else:
-            ws_config["gemini_model"] = args.model
-            console.print(f"[green]✅ gemini_model → {args.model}[/green]")
-        changed = True
+            env_updates["GEMINI_MODEL"] = args.model
+            console.print(f"[green]OK: gemini_model → {args.model}[/green]")
 
     if args.interval:
         ws_config["loop_interval"] = args.interval
-        console.print(f"[green]✅ loop_interval → {args.interval}s[/green]")
-        changed = True
+        console.print(f"[green]OK: loop_interval → {args.interval}s[/green]")
+        config_changed = True
 
     if args.ollama_url:
-        ws_config["ollama_base_url"] = args.ollama_url
-        console.print(f"[green]✅ ollama_base_url → {args.ollama_url}[/green]")
-        changed = True
+        env_updates["OLLAMA_BASE_URL"] = args.ollama_url
+        console.print(f"[green]OK: ollama_base_url → {args.ollama_url}[/green]")
 
     if args.api_key:
-        ws_config["gemini_api_key"] = args.api_key
-        console.print("[green]✅ gemini_api_key updated[/green]")
-        changed = True
+        env_updates["GEMINI_API_KEY"] = args.api_key
+        console.print("[green]OK: gemini_api_key updated[/green]")
 
-    if changed:
+    if args.lang:
+        lang = args.lang.lower()
+        if lang not in ("ko", "en"):
+            console.print(f"[red]ERROR: {t('config.lang_invalid')}[/red]")
+            sys.exit(1)
+        env_updates["ADELIE_LANGUAGE"] = lang
+        os.environ["ADELIE_LANGUAGE"] = lang
+        console.print(f"[green]OK: language → {lang}[/green]")
+
+    if getattr(args, "sandbox", None):
+        sbx = args.sandbox.lower()
+        if sbx not in ("none", "seatbelt", "docker"):
+            console.print("[red]ERROR: Sandbox must be 'none', 'seatbelt', or 'docker'[/red]")
+            sys.exit(1)
+        env_updates["SANDBOX_MODE"] = sbx
+        console.print(f"[green]OK: sandbox_mode → {sbx}[/green]")
+
+    if getattr(args, "plan_mode", None):
+        pm = args.plan_mode.lower()
+        if pm not in ("true", "false"):
+            console.print("[red]ERROR: Plan mode must be 'true' or 'false'[/red]")
+            sys.exit(1)
+        env_updates["PLAN_MODE"] = pm
+        console.print(f"[green]OK: plan_mode → {pm}[/green]")
+
+    if env_updates:
+        _update_env_file(env_updates)
+    if config_changed:
         _save_workspace_config(ws_config)
-    else:
-        table = Table(title="⚙️  Adelie Configuration", show_header=True, border_style="blue")
+
+    if not env_updates and not config_changed:
+        table = Table(title="Adelie Configuration", show_header=True, border_style="blue")
         table.add_column("Setting", style="bold")
         table.add_column("Value")
+        table.add_column("Source", style="dim")
 
-        provider = ws_config.get("provider", "gemini")
-        table.add_row("Provider", provider)
-        if provider == "gemini":
-            api_key = ws_config.get("gemini_api_key", "")
-            table.add_row("Gemini API Key", "***" + api_key[-4:] if api_key else "(not set)")
-            table.add_row("Gemini Model", ws_config.get("gemini_model", "gemini-2.0-flash"))
-        table.add_row("Ollama URL", ws_config.get("ollama_base_url", "http://localhost:11434"))
-        table.add_row("Ollama Model", ws_config.get("ollama_model", "llama3.2"))
-        table.add_row("Loop Interval", f"{ws_config.get('loop_interval', 30)}s")
-        table.add_row("Workspace", str(_find_workspace_root()))
+        table.add_row("Provider", cfg.LLM_PROVIDER, ".env")
+        if cfg.LLM_PROVIDER == "gemini":
+            api_key = cfg.GEMINI_API_KEY
+            table.add_row("Gemini API Key", "***" + api_key[-4:] if api_key else "(not set)", ".env")
+            table.add_row("Gemini Model", cfg.GEMINI_MODEL, ".env")
+        table.add_row("Ollama URL", cfg.OLLAMA_BASE_URL, ".env")
+        table.add_row("Ollama Model", cfg.OLLAMA_MODEL, ".env")
+        table.add_row("Loop Interval", f"{ws_config.get('loop_interval', 30)}s", "config.json")
+        table.add_row("Workspace", str(_find_workspace_root()), "")
+        table.add_row("Language", cfg.LANGUAGE, ".env")
+        table.add_row("Sandbox Mode", cfg.SANDBOX_MODE, ".env")
+        table.add_row("Plan Mode", str(cfg.PLAN_MODE_ENABLED), ".env")
 
         console.print(table)
-        console.print(f"\n[dim]Config: {_workspace_config_path()}[/dim]")
+        ws_root = _find_workspace_root()
+        console.print(f"\n[dim]LLM: {ws_root / '.env'}[/dim]")
+        console.print(f"[dim]Config: {_workspace_config_path()}[/dim]")
 
 
 def cmd_kb(args: argparse.Namespace) -> None:
@@ -751,10 +800,10 @@ def cmd_kb(args: argparse.Namespace) -> None:
         index = retriever.get_index()
         index = {k: v for k, v in index.items() if not k.startswith("errors/")}
         retriever.INDEX_FILE.write_text(json.dumps(index, indent=2), encoding="utf-8")
-        console.print(f"[green]✅ Cleared {count} error file(s)[/green]")
+        console.print(f"[green]OK: Cleared {count} error file(s)[/green]")
 
     elif args.reset:
-        console.print("[yellow]⚠️  This will delete ALL Knowledge Base files![/yellow]")
+        console.print("[yellow]WARN: This will delete ALL Knowledge Base files![/yellow]")
         confirm = input("Type 'yes' to confirm: ")
         if confirm.strip().lower() == "yes":
             for cat_dir in cfg.WORKSPACE_PATH.iterdir():
@@ -762,13 +811,13 @@ def cmd_kb(args: argparse.Namespace) -> None:
                     shutil.rmtree(cat_dir)
                     cat_dir.mkdir()
             retriever.INDEX_FILE.write_text("{}", encoding="utf-8")
-            console.print("[green]✅ Workspace reset complete[/green]")
+            console.print("[green]OK: Workspace reset complete[/green]")
         else:
             console.print("[dim]Cancelled.[/dim]")
 
     else:
         categories = retriever.list_categories()
-        table = Table(title="📚 Knowledge Base", show_header=True, border_style="green")
+        table = Table(title="Knowledge Base", show_header=True, border_style="green")
         table.add_column("Category", style="bold")
         table.add_column("Files", justify="right")
 
@@ -801,7 +850,7 @@ def cmd_ollama(args: argparse.Namespace) -> None:
                 console.print("[dim]Pull one with: adelie ollama pull <model>[/dim]")
                 return
 
-            table = Table(title="🦙 Ollama Models", show_header=True, border_style="magenta")
+            table = Table(title="Ollama Models", show_header=True, border_style="magenta")
             table.add_column("Name", style="bold")
             table.add_column("Size")
             table.add_column("Modified")
@@ -815,42 +864,42 @@ def cmd_ollama(args: argparse.Namespace) -> None:
 
             console.print(table)
         except Exception as e:
-            console.print(f"[red]❌ Cannot connect to Ollama at {base_url}[/red]")
+            console.print(f"[red]ERROR: Cannot connect to Ollama at {base_url}[/red]")
             console.print("[dim]   Start Ollama with: ollama serve[/dim]")
 
     elif action == "pull":
         if not args.model_name:
-            console.print("[red]❌ Specify model: adelie ollama pull <model>[/red]")
+            console.print("[red]ERROR: Specify model: adelie ollama pull <model>[/red]")
             return
-        console.print(f"[bold cyan]🦙 Pulling model: {args.model_name}[/bold cyan]")
+        console.print(f"[bold cyan]Pulling model: {args.model_name}[/bold cyan]")
         try:
             subprocess.run(["ollama", "pull", args.model_name], check=True)
-            console.print(f"[green]✅ '{args.model_name}' downloaded[/green]")
+            console.print(f"[green]OK: '{args.model_name}' downloaded[/green]")
             console.print(f"[dim]Set as active: adelie config --model {args.model_name}[/dim]")
         except FileNotFoundError:
-            console.print("[red]❌ 'ollama' not found. Install from: https://ollama.com[/red]")
+            console.print("[red]ERROR: 'ollama' not found. Install from: https://ollama.com[/red]")
         except subprocess.CalledProcessError as e:
-            console.print(f"[red]❌ Failed: {e}[/red]")
+            console.print(f"[red]ERROR: Failed: {e}[/red]")
 
     elif action == "remove":
         if not args.model_name:
-            console.print("[red]❌ Specify model: adelie ollama remove <model>[/red]")
+            console.print("[red]ERROR: Specify model: adelie ollama remove <model>[/red]")
             return
         try:
             subprocess.run(["ollama", "rm", args.model_name], check=True)
-            console.print(f"[green]✅ '{args.model_name}' removed[/green]")
+            console.print(f"[green]OK: '{args.model_name}' removed[/green]")
         except FileNotFoundError:
-            console.print("[red]❌ 'ollama' not found.[/red]")
+            console.print("[red]ERROR: 'ollama' not found.[/red]")
         except subprocess.CalledProcessError as e:
-            console.print(f"[red]❌ Failed: {e}[/red]")
+            console.print(f"[red]ERROR: Failed: {e}[/red]")
 
     elif action == "run":
         model = args.model_name or cfg.OLLAMA_MODEL
-        console.print(f"[bold cyan]🦙 Chat with: {model}[/bold cyan]")
+        console.print(f"[bold cyan]Chat with: {model}[/bold cyan]")
         try:
             subprocess.run(["ollama", "run", model])
         except FileNotFoundError:
-            console.print("[red]❌ 'ollama' not found.[/red]")
+            console.print("[red]ERROR: 'ollama' not found.[/red]")
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # TELEGRAM
@@ -865,19 +914,19 @@ def cmd_telegram(args: argparse.Namespace) -> None:
         _ensure_adelie_config()
         ws_config = _load_workspace_config()
 
-        console.print("[bold cyan]🤖 Telegram Bot Setup[/bold cyan]\n")
+        console.print("[bold cyan]Telegram Bot Setup[/bold cyan]\n")
         console.print("1. Open Telegram and search for [bold]@BotFather[/bold]")
         console.print("2. Send [bold]/newbot[/bold] and follow the instructions")
         console.print("3. Copy the bot token and paste it below\n")
 
         token = input("Bot Token: ").strip()
         if not token:
-            console.print("[red]❌ Token cannot be empty[/red]")
+            console.print("[red]ERROR: Token cannot be empty[/red]")
             return
 
         ws_config["telegram_bot_token"] = token
         _save_workspace_config(ws_config)
-        console.print("[green]✅ Telegram bot token saved![/green]")
+        console.print("[green]OK: Telegram bot token saved![/green]")
         console.print("[dim]Start with: adelie telegram start[/dim]")
 
     elif action == "start":
@@ -887,7 +936,7 @@ def cmd_telegram(args: argparse.Namespace) -> None:
         if args.ws_num:
             ws = registry.get_by_index(args.ws_num)
             if not ws:
-                console.print(f"[red]❌ Workspace #{args.ws_num} not found.[/red]")
+                console.print(f"[red]ERROR: Workspace #{args.ws_num} not found.[/red]")
                 sys.exit(1)
             ws_path = ws["path"]
         else:
@@ -895,7 +944,7 @@ def cmd_telegram(args: argparse.Namespace) -> None:
 
         adelie_dir = Path(ws_path) / ".adelie"
         if not adelie_dir.exists():
-            console.print(f"[red]❌ .adelie/ not found in {ws_path}[/red]")
+            console.print(f"[red]ERROR: .adelie/ not found in {ws_path}[/red]")
             console.print("[dim]Initialize with: adelie init[/dim]")
             sys.exit(1)
 
@@ -908,7 +957,7 @@ def cmd_telegram(args: argparse.Namespace) -> None:
 
         token = args.token or ws_config.get("telegram_bot_token", "")
         if not token:
-            console.print("[red]❌ No Telegram bot token configured.[/red]")
+            console.print("[red]ERROR: No Telegram bot token configured.[/red]")
             console.print("[dim]Run: adelie telegram setup[/dim]")
             sys.exit(1)
 
@@ -917,7 +966,7 @@ def cmd_telegram(args: argparse.Namespace) -> None:
         bot.start()
 
     else:
-        console.print("[red]❌ Unknown action. Use: setup, start[/red]")
+        console.print("[red]ERROR: Unknown action. Use: setup, start[/red]")
 
 
 def cmd_spec(args: argparse.Namespace) -> None:
@@ -931,12 +980,12 @@ def cmd_spec(args: argparse.Namespace) -> None:
 
     if action == "load":
         if not args.file_path:
-            console.print("[red]❌ Provide a file: adelie spec load <file>[/red]")
+            console.print("[red]ERROR: Provide a file: adelie spec load <file>[/red]")
             return
 
         file_path = Path(args.file_path).resolve()
         if not file_path.exists():
-            console.print(f"[red]❌ File not found: {file_path}[/red]")
+            console.print(f"[red]ERROR: File not found: {file_path}[/red]")
             return
 
         from adelie.spec_loader import SUPPORTED_EXTENSIONS, load_spec
@@ -944,13 +993,13 @@ def cmd_spec(args: argparse.Namespace) -> None:
         ext = file_path.suffix.lower()
         if ext not in SUPPORTED_EXTENSIONS:
             console.print(
-                f"[red]❌ Unsupported format: '{ext}'[/red]\n"
+                f"[red]ERROR: Unsupported format: '{ext}'[/red]\n"
                 f"[dim]Supported: {', '.join(sorted(SUPPORTED_EXTENSIONS))}[/dim]"
             )
             return
 
         category = args.category or "logic"
-        console.print(f"[bold cyan]📄 Loading spec: {file_path.name}[/bold cyan]")
+        console.print(f"[bold cyan]Loading spec: {file_path.name}[/bold cyan]")
         console.print(f"   [dim]Format: {ext} → Markdown[/dim]")
         console.print(f"   [dim]Category: {category}[/dim]")
 
@@ -967,12 +1016,12 @@ def cmd_spec(args: argparse.Namespace) -> None:
             chunk_info = ""
             if loaded and loaded.get("chunks", 0) > 0:
                 chunk_info = f" ({loaded['chunks']} chunks)"
-            console.print(f"\n[green]✅ Spec loaded → {saved_path.relative_to(cfg.WORKSPACE_PATH)}{chunk_info}[/green]")
+            console.print(f"\n[green]OK: Spec loaded → {saved_path.relative_to(cfg.WORKSPACE_PATH)}{chunk_info}[/green]")
         except ImportError as e:
-            console.print(f"[red]❌ Missing dependency: {e}[/red]")
+            console.print(f"[red]ERROR: Missing dependency: {e}[/red]")
             console.print("[dim]Run: pip install -r requirements.txt[/dim]")
         except Exception as e:
-            console.print(f"[red]❌ Failed to load spec: {e}[/red]")
+            console.print(f"[red]ERROR: Failed to load spec: {e}[/red]")
 
     elif action == "list":
         from adelie.spec_loader import list_specs
@@ -983,7 +1032,7 @@ def cmd_spec(args: argparse.Namespace) -> None:
             console.print("[dim]Load one with: adelie spec load <file>[/dim]")
             return
 
-        table = Table(title="📋 Loaded Specifications", show_header=True, border_style="green")
+        table = Table(title="Loaded Specifications", show_header=True, border_style="green")
         table.add_column("Name", style="bold")
         table.add_column("Category")
         table.add_column("Size", justify="right")
@@ -1006,16 +1055,16 @@ def cmd_spec(args: argparse.Namespace) -> None:
     elif action == "remove":
         spec_name = args.file_path
         if not spec_name:
-            console.print("[red]❌ Provide spec name: adelie spec remove <name>[/red]")
+            console.print("[red]ERROR: Provide spec name: adelie spec remove <name>[/red]")
             console.print("[dim]Use 'adelie spec list' to see loaded specs.[/dim]")
             return
 
         from adelie.spec_loader import remove_spec
 
         if remove_spec(cfg.WORKSPACE_PATH, spec_name):
-            console.print(f"[green]✅ Spec '{spec_name}' removed[/green]")
+            console.print(f"[green]OK: Spec '{spec_name}' removed[/green]")
         else:
-            console.print(f"[yellow]⚠️  Spec '{spec_name}' not found[/yellow]")
+            console.print(f"[yellow]WARN: Spec '{spec_name}' not found[/yellow]")
             console.print("[dim]Use 'adelie spec list' to see loaded specs.[/dim]")
 
 
@@ -1027,12 +1076,12 @@ def cmd_scan(args: argparse.Namespace) -> None:
     target = Path(args.directory).resolve()
 
     if not target.is_dir():
-        console.print(f"[red]❌ Directory not found: {target}[/red]")
+        console.print(f"[red]ERROR: Directory not found: {target}[/red]")
         return
 
     ws_root = _find_workspace_root()
     if not ws_root.exists():
-        console.print("[yellow]⚠️  No .adelie/ workspace found. Run 'adelie init' first.[/yellow]")
+        console.print("[yellow]WARN: No .adelie/ workspace found. Run 'adelie init' first.[/yellow]")
         return
 
     import adelie.config as cfg
@@ -1044,7 +1093,7 @@ def cmd_scan(args: argparse.Namespace) -> None:
     )
 
     if written:
-        console.print(f"\n[bold green]✅ Scan complete — {len(written)} KB document(s) generated[/bold green]")
+        console.print(f"\n[bold green]Scan complete — {len(written)} KB document(s) generated[/bold green]")
     else:
         console.print("[yellow]No documents generated. Check if the project has source files.[/yellow]")
 
@@ -1063,16 +1112,16 @@ def cmd_feedback(args: argparse.Namespace) -> None:
     if args.list_pending:
         pending = read_pending()
         if not pending:
-            console.print("[green]✅ No pending feedback[/green]")
+            console.print("[green]OK: No pending feedback[/green]")
             return
-        table = Table(title="🗣️ Pending Feedback", show_header=True, border_style="yellow")
+        table = Table(title="Pending Feedback", show_header=True, border_style="yellow")
         table.add_column("ID", style="bold cyan")
         table.add_column("Priority")
         table.add_column("Message", max_width=50)
         table.add_column("Time")
         for fb in pending:
             prio = fb.get("priority", "normal")
-            icon = {"critical": "🔴", "high": "🟠", "normal": "🟢", "low": "⚪"}.get(prio, "🟢")
+            icon = {"critical": "[!]", "high": "[*]", "normal": "[+]", "low": "[-]"}.get(prio, "[+]")
             table.add_row(
                 fb.get("id", "?"),
                 f"{icon} {prio}",
@@ -1083,7 +1132,7 @@ def cmd_feedback(args: argparse.Namespace) -> None:
         return
 
     if not args.message:
-        console.print("[red]❌ Provide a message: adelie feedback \"your message\"[/red]")
+        console.print("[red]ERROR: Provide a message: adelie feedback \"your message\"[/red]")
         console.print("[dim]Or list pending: adelie feedback --list[/dim]")
         return
 
@@ -1101,12 +1150,12 @@ def cmd_goal(args: argparse.Namespace) -> None:
 
     if args.goal_action == "set":
         if not args.goal_text:
-            console.print("[red]❌ Provide goal text: adelie goal set \"your goal\"[/red]")
+            console.print("[red]ERROR: Provide goal text: adelie goal set \"your goal\"[/red]")
             return
 
         goal_path.parent.mkdir(parents=True, exist_ok=True)
         content = (
-            f"# 🎯 Project Goal\n\n"
+            f"# Project Goal\n\n"
             f"**Set**: {datetime.now().isoformat(timespec='seconds')}\n\n"
             f"## Goal\n{args.goal_text}\n\n"
             f"## Notes\n- This file is automatically referenced by Expert AI and Writer AI.\n"
@@ -1118,7 +1167,7 @@ def cmd_goal(args: argparse.Namespace) -> None:
             tags=["goal", "project", "priority"],
             summary=f"Project goal: {args.goal_text[:100]}",
         )
-        console.print(f"[green]✅ Project goal saved![/green]")
+        console.print(f"[green]OK: Project goal saved![/green]")
         console.print(f"[dim]   {args.goal_text[:80]}[/dim]")
         return
 
@@ -1142,20 +1191,20 @@ def cmd_git(args: argparse.Namespace) -> None:
     root = cfg.PROJECT_ROOT
 
     if not is_git_repo(root):
-        console.print(f"[yellow]⚠️  {root} is not a git repository.[/yellow]")
+        console.print(f"[yellow]WARN: {root} is not a git repository.[/yellow]")
         return
 
     # Status
     status = get_status(root)
     if status["ok"]:
         if status["changed_files"] == 0:
-            console.print("[green]✅ Working tree clean[/green]")
+            console.print("[green]OK: Working tree clean[/green]")
         else:
-            console.print(f"[yellow]📝 {status['changed_files']} changed file(s):[/yellow]")
+            console.print(f"[yellow]{status['changed_files']} changed file(s):[/yellow]")
             for f in status["files"]:
                 console.print(f"   [dim]{f}[/dim]")
     else:
-        console.print(f"[red]❌ Git error: {status.get('error', '?')}[/red]")
+        console.print(f"[red]ERROR: Git error: {status.get('error', '?')}[/red]")
 
     # Recent log
     log = get_log(n=5, root=root)
@@ -1194,7 +1243,7 @@ def cmd_research(args: argparse.Namespace) -> None:
         return
 
     if not args.topic:
-        console.print("[red]❌ Provide a topic: adelie research \"your topic\"[/red]")
+        console.print("[red]ERROR: Provide a topic: adelie research \"your topic\"[/red]")
         console.print("[dim]Or list recent: adelie research --list[/dim]")
         return
 
@@ -1208,9 +1257,124 @@ def cmd_research(args: argparse.Namespace) -> None:
         max_queries=1,
     )
     if results:
-        console.print(f"\n[green]✅ Research saved to KB:[/green] {results[0].get('kb_path', '?')}")
+        console.print(f"\n[green]OK: Research saved to KB:[/green] {results[0].get('kb_path', '?')}")
     else:
         console.print("[yellow]No results found.[/yellow]")
+
+
+def cmd_commands(args: argparse.Namespace) -> None:
+    """List available custom commands."""
+    from adelie.command_loader import load_commands
+
+    cmds = load_commands()
+    if not cmds:
+        console.print("[dim]No custom commands found.[/dim]")
+        console.print("[dim]Create .adelie/commands/<name>.md to add custom commands.[/dim]")
+        return
+
+    table = Table(title="Custom Commands", show_header=True, border_style="cyan")
+    table.add_column("Command", style="bold cyan")
+    table.add_column("Description")
+    table.add_column("File", style="dim")
+    for cmd in cmds:
+        table.add_row(f"/{cmd.name}", cmd.description, cmd.path)
+    console.print(table)
+    console.print("\n[dim]Use /<command-name> [args] in the interactive REPL.[/dim]")
+
+
+def cmd_tools(args: argparse.Namespace) -> None:
+    """Manage tool registry."""
+    from adelie.tool_registry import get_registry
+
+    registry = get_registry()
+    action = getattr(args, "tools_action", "list")
+
+    if action == "list":
+        tools = registry.get_all()
+        if not tools:
+            console.print("[dim]No tools registered.[/dim]")
+            return
+
+        table = Table(title="Tool Registry", show_header=True, border_style="green")
+        table.add_column("Name", style="bold")
+        table.add_column("Category")
+        table.add_column("Description")
+        table.add_column("Status")
+        table.add_column("Agents", style="dim")
+
+        for tool in tools:
+            status = "[green]enabled[/green]" if tool.enabled else "[dim]disabled[/dim]"
+            agents = ", ".join(tool.agents) if tool.agents else "all"
+            source = "" if tool.builtin else " [cyan](custom)[/cyan]"
+            table.add_row(
+                f"{tool.name}{source}",
+                tool.category.value,
+                tool.description[:50],
+                status,
+                agents,
+            )
+        console.print(table)
+
+    elif action == "enable":
+        name = getattr(args, "tool_name", None)
+        if not name:
+            console.print("[red]ERROR: Specify tool name: adelie tools enable <name>[/red]")
+            return
+        if registry.enable(name):
+            registry.save_state()
+            console.print(f"[green]OK: Tool '{name}' enabled[/green]")
+        else:
+            console.print(f"[red]ERROR: Tool '{name}' not found[/red]")
+
+    elif action == "disable":
+        name = getattr(args, "tool_name", None)
+        if not name:
+            console.print("[red]ERROR: Specify tool name: adelie tools disable <name>[/red]")
+            return
+        if registry.disable(name):
+            registry.save_state()
+            console.print(f"[green]OK: Tool '{name}' disabled[/green]")
+        else:
+            console.print(f"[red]ERROR: Tool '{name}' not found[/red]")
+
+
+def cmd_prompts(args: argparse.Namespace) -> None:
+    """Manage agent system prompts."""
+    from adelie.prompt_loader import list_prompts, export_prompts, reset_prompts
+
+    action = getattr(args, "action", "list")
+
+    if action == "list":
+        prompts = list_prompts()
+        if not prompts:
+            console.print("[dim]No prompt files found.[/dim]")
+            return
+        table = Table(title="Agent Prompts", show_header=True, border_style="cyan")
+        table.add_column("Agent", style="bold")
+        table.add_column("Source")
+        table.add_column("Path", style="dim")
+        for p in prompts:
+            source_style = "[green]user[/green]" if p["source"] == "user" else "[dim]package[/dim]"
+            table.add_row(p["agent"], source_style, p["path"])
+        console.print(table)
+        console.print("\n[dim]To customize: adelie prompts export, then edit .adelie/prompts/<agent>.md[/dim]")
+
+    elif action == "export":
+        exported = export_prompts()
+        if exported:
+            console.print(f"[green]Exported {len(exported)} prompt(s):[/green]")
+            for p in exported:
+                console.print(f"  {p}")
+            console.print("\n[dim]Edit thenm in .adelie/prompts/ to customize.[/dim]")
+        else:
+            console.print("[yellow]No new prompts to export (already exist or no .adelie dir).[/yellow]")
+
+    elif action == "reset":
+        removed = reset_prompts()
+        if removed:
+            console.print(f"[green]Reset {len(removed)} custom prompt(s) to defaults.[/green]")
+        else:
+            console.print("[dim]No custom prompts to reset.[/dim]")
 
 
 def cmd_metrics(args: argparse.Namespace) -> None:
@@ -1236,7 +1400,7 @@ def cmd_metrics(args: argparse.Namespace) -> None:
                 h = int(args.since.rstrip("h"))
                 since = datetime.now() - timedelta(hours=h)
             except ValueError:
-                console.print(f"[red]❌ Invalid --since value: {args.since}[/red]")
+                console.print(f"[red]ERROR: Invalid --since value: {args.since}[/red]")
                 console.print("[dim]Use: 1h, 6h, 12h, 24h, 48h, 7d[/dim]")
                 return
 
@@ -1275,7 +1439,7 @@ def cmd_metrics(args: argparse.Namespace) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(
         prog="adelie",
-        description="🐧 Adelie — Self-Communicating Autonomous AI Loop",
+        description="Adelie — Self-Communicating Autonomous AI Loop",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="Run [adelie help] for detailed command reference.",
     )
@@ -1351,6 +1515,9 @@ def main() -> None:
     p_config.add_argument("--interval", type=int, help="Loop interval (seconds)")
     p_config.add_argument("--ollama-url", type=str, help="Ollama server URL")
     p_config.add_argument("--api-key", type=str, help="Gemini API key")
+    p_config.add_argument("--lang", type=str, help="Display language: 'ko' or 'en'")
+    p_config.add_argument("--sandbox", type=str, help="Sandbox mode: 'none', 'seatbelt', or 'docker'")
+    p_config.add_argument("--plan-mode", type=str, dest="plan_mode", help="Plan mode: 'true' or 'false'")
     p_config.set_defaults(func=cmd_config)
 
     # ── kb ────────
@@ -1435,6 +1602,26 @@ def main() -> None:
                            help="Time filter (e.g. 1h, 6h, 24h, 7d)")
     p_metrics.set_defaults(func=cmd_metrics)
 
+    # ── Prompts management ────────────────────────────────────────────────
+    p_prompts = subparsers.add_parser("prompts", help="Manage agent system prompts")
+    p_prompts.add_argument("action", nargs="?", default="list",
+                           choices=["list", "export", "reset"],
+                           help="list: show prompts | export: copy defaults for editing | reset: remove customs")
+    p_prompts.set_defaults(func=cmd_prompts)
+
+    # ── Custom commands ───────────────────────────────────────────────────
+    p_commands = subparsers.add_parser("commands", help="List custom commands from .adelie/commands/")
+    p_commands.set_defaults(func=cmd_commands)
+
+    # ── Tools ─────────────────────────────────────────────────────────────
+    p_tools = subparsers.add_parser("tools", help="Manage tool registry")
+    p_tools.add_argument("tools_action", nargs="?", default="list",
+                         choices=["list", "enable", "disable"],
+                         help="list (default) / enable / disable")
+    p_tools.add_argument("tool_name", nargs="?", default=None,
+                         help="Tool name (for enable/disable)")
+    p_tools.set_defaults(func=cmd_tools)
+
     # ── Parse ─────────────────────────────────────────────────────────────
     args = parser.parse_args()
 
@@ -1446,7 +1633,7 @@ def main() -> None:
         except Exception:
             provider_info = "(not configured)"
         console.print(Panel.fit(
-            f"[bold cyan]🐧 Adelie[/bold cyan] — Autonomous AI Loop\n"
+            f"[bold cyan]Adelie[/bold cyan] — Autonomous AI Loop\n"
             f"[dim]LLM: {provider_info}[/dim]",
             border_style="cyan",
         ))
@@ -1462,7 +1649,7 @@ def _dispatch_run(args: argparse.Namespace) -> None:
     if args.ws_keyword == "ws" and args.workspace_num is not None:
         pass  # workspace_num is already set
     elif args.ws_keyword == "ws" and args.workspace_num is None:
-        console.print("[red]❌ Specify workspace number: adelie run ws <N>[/red]")
+        console.print("[red]ERROR: Specify workspace number: adelie run ws <N>[/red]")
         console.print("[dim]Use 'adelie ws' to see available workspaces.[/dim]")
         sys.exit(1)
     elif args.ws_keyword == "once":
@@ -1473,7 +1660,7 @@ def _dispatch_run(args: argparse.Namespace) -> None:
         try:
             args.workspace_num = int(args.ws_keyword)
         except ValueError:
-            console.print(f"[red]❌ Unknown argument: {args.ws_keyword}[/red]")
+            console.print(f"[red]ERROR: Unknown argument: {args.ws_keyword}[/red]")
             console.print("[dim]Usage: adelie run [ws <N>] [--goal '...'] [--once][/dim]")
             sys.exit(1)
     else:

@@ -2,7 +2,7 @@
   <img src="docs/adelie_logo.jpeg" alt="Adelie Logo" width="200" />
 </p>
 
-<h1 align="center">🐧 Adelie</h1>
+<h1 align="center">Adelie</h1>
 
 <p align="center">
   <strong>Self-Communicating Autonomous AI Loop System</strong><br/>
@@ -13,7 +13,7 @@
   <img src="https://img.shields.io/badge/python-3.10+-blue?logo=python" alt="Python 3.10+" />
   <img src="https://img.shields.io/badge/LLM-Gemini%20%7C%20Ollama-orange" alt="LLM Support" />
   <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License" />
-  <img src="https://img.shields.io/badge/tests-232%20passed-brightgreen" alt="Tests" />
+  <img src="https://img.shields.io/badge/tests-374%20passed-brightgreen" alt="Tests" />
 </p>
 
 ---
@@ -26,16 +26,16 @@ Think of it as an AI team that continuously works on your project:
 
 | Agent | Role |
 |-------|------|
-| 🧠 **Expert AI** | Makes strategic decisions, dispatches tasks, manages state |
-| 📝 **Writer AI** | Creates and maintains the Knowledge Base (documentation) |
-| ⚙️ **Coder AI** | Writes actual source code in a layered architecture |
-| ⭐ **Reviewer AI** | Reviews code quality, feeds back to coders |
-| 🧪 **Tester AI** | Runs tests, reports failures back for fixes |
-| 🚀 **Runner AI** | Builds, deploys, and runs the project |
-| 📊 **Monitor AI** | Checks system health, triggers restarts |
-| 📈 **Analyst AI** | Provides project-level insights and analysis |
-| 🔍 **Research AI** | Searches the web for external information |
-| 📋 **Scanner AI** | Scans existing codebases on first run |
+| **Expert AI** | Makes strategic decisions, dispatches tasks, manages state |
+| **Writer AI** | Creates and maintains the Knowledge Base (documentation) |
+| **Coder AI** | Writes actual source code in a layered architecture |
+| **Reviewer AI** | Reviews code quality, feeds back to coders |
+| **Tester AI** | Runs tests, reports failures back for fixes |
+| **Runner AI** | Builds, deploys, and runs the project |
+| **Monitor AI** | Checks system health, triggers restarts |
+| **Analyst AI** | Provides project-level insights and analysis |
+| **Research AI** | Searches the web for external information |
+| **Scanner AI** | Scans existing codebases on first run |
 
 All agents communicate through a **file-based Knowledge Base** and are coordinated by the **Orchestrator** — an endless loop with a built-in state machine.
 
@@ -48,15 +48,15 @@ All agents communicate through a **file-based Knowledge Base** and are coordinat
 │                   ORCHESTRATOR                       │
 │                                                     │
 │   ┌──────────┐    ┌──────────┐    ┌──────────────┐ │
-│   │ Writer AI│───▶│Expert AI │───▶│ Coder Manager│ │
+│   │ Writer AI│───>│Expert AI │───>│ Coder Manager│ │
 │   └──────────┘    └──────────┘    └──────┬───────┘ │
 │        │               │                 │         │
-│        ▼               │          ┌──────┴──────┐  │
+│        v               │          ┌──────┴──────┐  │
 │   ┌──────────┐         │          │  Layer 0-2  │  │
 │   │Knowledge │         │          │   Coders    │  │
-│   │   Base   │◀────────┘          └──────┬──────┘  │
+│   │   Base   │<────────┘          └──────┬──────┘  │
 │   └──────────┘                           │         │
-│                                          ▼         │
+│                                          v         │
 │   ┌──────────┐  ┌──────────┐  ┌──────────────────┐│
 │   │ Reviewer │  │ Tester   │  │ Runner / Monitor ││
 │   │    AI    │  │    AI    │  │       AI         ││
@@ -75,18 +75,18 @@ All agents communicate through a **file-based Knowledge Base** and are coordinat
 Adelie evolves your project through 6 phases:
 
 ```
-🌱 INITIAL ──▶ 🔨 MID ──▶ 🚀 MID_1 ──▶ ⚡ MID_2 ──▶ 🛡️ LATE ──▶ 🧬 EVOLVE
- Planning      Coding     Testing      Optimizing   Maintaining   Autonomous
+INITIAL ──> MID ──> MID_1 ──> MID_2 ──> LATE ──> EVOLVE
+Planning    Coding   Testing   Optimizing  Maintaining  Autonomous
 ```
 
 | Phase | Focus | Coder Layers |
 |-------|-------|-------------|
-| 🌱 Initial | Documentation, architecture, roadmap | None |
-| 🔨 Mid | Implementation, feature coding | Layer 0 (features) |
-| 🚀 Mid-1 | Integration, testing, roadmap check | Layer 0–1 (+ connectors) |
-| ⚡ Mid-2 | Stabilization, optimization, deployment | Layer 0–2 (+ infra) |
-| 🛡️ Late | Maintenance, new features | All layers |
-| 🧬 Evolve | Autonomous evolution, self-improvement | All layers |
+| Initial | Documentation, architecture, roadmap | None |
+| Mid | Implementation, feature coding | Layer 0 (features) |
+| Mid-1 | Integration, testing, roadmap check | Layer 0-1 (+ connectors) |
+| Mid-2 | Stabilization, optimization, deployment | Layer 0-2 (+ infra) |
+| Late | Maintenance, new features | All layers |
+| Evolve | Autonomous evolution, self-improvement | All layers |
 
 Phase transitions are **gated** by quality metrics (KB file count, test pass rate, review scores) and confirmed by the Expert AI.
 
@@ -119,14 +119,12 @@ Adelie includes multiple built-in safety mechanisms:
 ### Installation
 
 ```bash
-# Clone the repository
-git clone https://github.com/your-username/Adelie.git
+# Install via npm (recommended)
+npm install -g adelie
+
+# Or install from source
+git clone https://github.com/kimhyunbin/Adelie.git
 cd Adelie
-
-# Install Python dependencies
-pip install -r requirements.txt
-
-# Install the CLI globally
 npm install -g .
 ```
 
@@ -142,6 +140,9 @@ adelie config --provider gemini --api-key YOUR_GEMINI_API_KEY
 
 # Or use Ollama (local, free)
 adelie config --provider ollama --model gemma3:12b
+
+# Set display language (ko or en)
+adelie config --lang en
 ```
 
 ### Run
@@ -175,6 +176,7 @@ Configuration
   adelie config --model ...      Set model name
   adelie config --interval N     Set loop interval (seconds)
   adelie config --api-key KEY    Set Gemini API key
+  adelie config --lang ko|en     Set display language
 
 Monitoring
   adelie status                  System health & provider status
@@ -193,6 +195,7 @@ Project Management
   adelie feedback "message"      Send feedback to the AI loop
   adelie research "topic"        Search the web and save to KB
   adelie git                     Show git status & recent commits
+  adelie metrics                 Show recent cycle metrics
 
 Ollama
   adelie ollama list             List installed models
@@ -208,7 +211,7 @@ Telegram
 
 ## Environment Variables
 
-Copy `.env.example` to `.env` and configure:
+All settings are stored in `.adelie/.env` (created by `adelie init`):
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -219,7 +222,7 @@ Copy `.env.example` to `.env` and configure:
 | `OLLAMA_MODEL` | `llama3.2` | Ollama model name |
 | `FALLBACK_MODELS` | — | Comma-separated fallback chain (e.g. `gemini:gemini-2.5-flash,ollama:llama3.2`) |
 | `LOOP_INTERVAL_SECONDS` | `30` | Seconds between loop cycles |
-| `WORKSPACE_PATH` | `./.adelie/workspace` | Knowledge Base path |
+| `ADELIE_LANGUAGE` | `ko` | Display language (`ko` or `en`) |
 
 ---
 
@@ -251,7 +254,7 @@ python -m pytest tests/ -v
 python -m pytest tests/test_orchestrator.py -v
 ```
 
-Currently **232 tests** covering all agents, context engine, loop detection, scheduling, and more.
+Currently **374 tests** covering all agents, context engine, loop detection, scheduling, and more.
 
 ---
 
@@ -263,6 +266,7 @@ Adelie/
 │   ├── orchestrator.py      # Main loop controller (state machine)
 │   ├── cli.py               # CLI commands
 │   ├── config.py            # Configuration & env loading
+│   ├── i18n.py              # Internationalization (ko/en)
 │   ├── llm_client.py        # LLM abstraction (Gemini + Ollama)
 │   ├── scheduler.py         # Per-agent scheduling
 │   ├── phases.py            # Project lifecycle phases
@@ -292,10 +296,9 @@ Adelie/
 │   │   └── inform_ai.py     # Status reports
 │   └── integrations/
 │       └── telegram_bot.py  # Telegram integration
-├── tests/                   # 232 tests
+├── tests/                   # 374 tests
 ├── bin/                     # Node.js CLI wrapper
 ├── scripts/                 # Install scripts
-├── .env.example             # Environment template
 ├── requirements.txt         # Python dependencies
 └── package.json             # npm package config
 ```
@@ -323,10 +326,10 @@ The loop runs continuously until shutdown, with the **Scheduler** controlling ho
 
 ## License
 
-MIT
+MIT — see [LICENSE](./LICENSE) for details.
 
 ---
 
 <p align="center">
-  Made with 🐧 by Adelie
+  Made with Adelie
 </p>

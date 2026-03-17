@@ -1,3 +1,17 @@
-playwright>=1.40.0
+# ── Core (required) ──────────────────────────────────────────────────────────
+rich>=13.0.0
+python-dotenv>=1.0.0
+requests>=2.28.0
+
+# ── LLM Providers ───────────────────────────────────────────────────────────
+google-genai>=1.0.0
+
+# ── Spec Loader (PDF support) ───────────────────────────────────────────────
+PyPDF2>=3.0.0
+
+# ── Browser Search Fallback (optional — installed on demand) ────────────────
+# playwright>=1.40.0
 beautifulsoup4>=4.12.0
-textual>=0.85.0
+
+# ── Integrations (optional) ─────────────────────────────────────────────────
+# python-telegram-bot>=20.0

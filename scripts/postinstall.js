@@ -19,7 +19,7 @@ const PYTHON_BIN = IS_WIN
   : path.join(VENV_DIR, "bin", "python");
 
 if (fs.existsSync(PYTHON_BIN)) {
-  console.log("🐧 Adelie — Python environment already exists, skipping setup.");
+  console.log("[adelie] Python environment already exists, skipping setup.");
   process.exit(0);
 }
 
@@ -38,12 +38,13 @@ for (const cmd of candidates) {
 }
 
 if (!sysPython) {
-  console.warn("⚠️  Python 3 not found — skipping venv setup.");
-  console.warn("   Adelie will create the venv on first run.");
-  process.exit(0);
+  console.error("[adelie] ERROR: Python 3 is required but not found.");
+  console.error("         Install it from: https://www.python.org/downloads/");
+  console.error("         After installing Python 3, run: npm rebuild adelie");
+  process.exit(1);
 }
 
-console.log(`🐧 Adelie — Creating Python venv with ${sysPython}...`);
+console.log(`[adelie] Creating Python venv with ${sysPython}...`);
 
 try {
   execSync(`${sysPython} -m venv "${VENV_DIR}"`, { stdio: "inherit" });
@@ -51,8 +52,10 @@ try {
     ? path.join(VENV_DIR, "Scripts", "pip")
     : path.join(VENV_DIR, "bin", "pip");
   execSync(`"${pip}" install -q -r "${REQUIREMENTS}"`, { stdio: "inherit" });
-  console.log("✅ Adelie Python environment ready.");
+  console.log("[adelie] Python environment ready.");
 } catch (err) {
-  console.warn(`⚠️  Could not set up Python environment: ${err.message}`);
-  console.warn("   Adelie will retry on first run.");
+  console.error(`[adelie] ERROR: Failed to set up Python environment.`);
+  console.error(`         ${err.message}`);
+  console.error("         Try manually: python3 -m venv .venv && .venv/bin/pip install -r requirements.txt");
+  process.exit(1);
 }

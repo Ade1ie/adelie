@@ -1,328 +1,266 @@
 """
 adelie/interactive.py
 
-Interactive TUI dashboard for the Adelie orchestrator using Textual.
-Provides a structured dashboard with:
-  - Status header (phase, state, cycle, goal)
-  - Agent activity tracker (real-time agent status)
-  - Filtered activity log (important events only)
-  - Cycle metrics summary
-  - Command input bar
+Gemini CLI-inspired interactive REPL for the Adelie orchestrator.
+
+NO alternate screen buffer — output flows naturally in the terminal.
+Text is scrollable and copyable like a normal CLI tool.
+
+Layout:
+  1. ASCII header printed once at startup
+  2. Orchestrator events print inline as they happen (Rich markup)
+  3. Simple threaded input loop with '>' prompt for commands
 """
 
 from __future__ import annotations
 
+import readline  # noqa: F401 — enables arrow-key editing in input()
+import shutil
+import signal
 import sys
-from datetime import datetime
+import threading
+import time
 from typing import Optional
 
 from rich.console import Console
 from rich.text import Text
-from textual.app import App, ComposeResult
-from textual.containers import Vertical, Horizontal
-from textual.reactive import reactive
-from textual.widgets import Header, Footer, Input, RichLog, Static
-from textual import work
 
 from adelie.orchestrator import Orchestrator
 from adelie.ui_logger import (
     UILogger, LogCategory, AgentState, AgentInfo,
     CycleMetrics, TRACKED_AGENTS,
 )
+from adelie.command_loader import get_command, load_commands
 
 console = Console()
 
+# ── Agent color map ───────────────────────────────────────────────────────────
 
-# ── Custom Widgets ────────────────────────────────────────────────────────────
-
-class StatusHeader(Static):
-    """Top status panel showing phase, state, cycle, and goal."""
-
-    phase = reactive("—")
-    state = reactive("—")
-    cycle = reactive(0)
-    goal = reactive("—")
-
-    def render(self) -> str:
-        state_icons = {
-            "normal": "🟢", "error": "🔴", "maintenance": "🟡",
-            "export": "🔵", "new_logic": "🟣", "shutdown": "⚫",
-        }
-        state_icon = state_icons.get(self.state, "⚪")
-        cycle_str = f"#{self.cycle}" if self.cycle > 0 else "—"
-        goal_display = self.goal[:60] + "…" if len(self.goal) > 60 else self.goal
-
-        return (
-            f" 🐧 Adelie Dashboard\n"
-            f" ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄\n"
-            f" Phase: {self.phase}  │  "
-            f"State: {state_icon} {self.state}  │  "
-            f"Cycle: {cycle_str}\n"
-            f" Goal: {goal_display}"
-        )
+AGENT_COLORS = {
+    "Writer":   "blue",
+    "Expert":   "cyan",
+    "Scanner":  "magenta",
+    "Coder:0":  "green",
+    "Coder:1":  "green",
+    "Coder:2":  "green",
+    "Reviewer": "yellow",
+    "Tester":   "red",
+    "Runner":   "bright_green",
+    "Monitor":  "bright_cyan",
+    "Analyst":  "bright_magenta",
+    "Inform":   "bright_blue",
+    "Research": "bright_yellow",
+}
 
 
-class AgentTracker(Static):
-    """Panel showing real-time status of all agents."""
+# ── Header ────────────────────────────────────────────────────────────────────
 
-    # We store the full state as a string that triggers re-render
-    _agent_display = reactive("", layout=True)
+def print_header(goal: str, phase: str, model: str, workspace: str):
+    """Print the startup header — gemini-cli style ASCII icon + info."""
+    width = shutil.get_terminal_size((80, 24)).columns
 
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self._agents: dict[str, AgentInfo] = {
-            name: AgentInfo(name=name) for name in TRACKED_AGENTS
-        }
+    console.print()
+    console.print("  [cyan]▝▜▄[/cyan]    [bold]Adelie[/bold] [dim]v0.1.0[/dim]")
+    console.print(f"    [cyan]▝▜▄[/cyan]  [dim]{model}[/dim]")
+    console.print(f"   [cyan]▗▟▀[/cyan]  [dim]Phase:[/dim] {phase}")
+    console.print(f"  [cyan]▝▀[/cyan]")
+    console.print()
 
-    def update_agent(self, name: str, info: AgentInfo) -> None:
-        """Update a single agent's display state."""
-        self._agents[name] = info
-        self._refresh_display()
+    # Goal
+    if goal:
+        goal_max = width - 4
+        goal_display = (goal[:goal_max] + "…") if len(goal) > goal_max else goal
+        console.print(f"  [dim]Goal:[/dim] {goal_display}")
 
-    def reset_all(self) -> None:
-        """Reset all agents to idle."""
-        for name in self._agents:
-            self._agents[name] = AgentInfo(name=name)
-        self._refresh_display()
+    # Workspace
+    if workspace:
+        ws_display = workspace
+        if ws_display.startswith("/Users/"):
+            parts = ws_display.split("/")
+            if len(parts) > 3:
+                ws_display = "~/" + "/".join(parts[3:])
+        console.print(f"  [dim]Workspace:[/dim] {ws_display}")
 
-    def _refresh_display(self) -> None:
-        # Trigger reactive update
-        lines = []
-        for name in TRACKED_AGENTS:
-            info = self._agents.get(name, AgentInfo(name=name))
-            lines.append(self._format_agent(info))
-        self._agent_display = "\n".join(lines)
-
-    def _format_agent(self, info: AgentInfo) -> str:
-        icons = {
-            AgentState.IDLE:    "⬜",
-            AgentState.RUNNING: "🔄",
-            AgentState.DONE:    "✅",
-            AgentState.ERROR:   "❌",
-            AgentState.SKIPPED: "⏭️",
-        }
-        icon = icons.get(info.state, "⬜")
-        name_padded = info.name.ljust(10)
-
-        if info.state == AgentState.RUNNING:
-            return f"  {icon} {name_padded} running…"
-        elif info.state == AgentState.DONE:
-            elapsed = f"({info.elapsed:.1f}s)" if info.elapsed > 0 else ""
-            detail = f" — {info.detail}" if info.detail else ""
-            # Truncate detail to fit
-            max_detail = 45
-            if len(detail) > max_detail:
-                detail = detail[:max_detail] + "…"
-            return f"  {icon} {name_padded} done {elapsed}{detail}"
-        elif info.state == AgentState.ERROR:
-            detail = f" — {info.detail}" if info.detail else ""
-            max_detail = 45
-            if len(detail) > max_detail:
-                detail = detail[:max_detail] + "…"
-            return f"  {icon} {name_padded} error{detail}"
-        elif info.state == AgentState.SKIPPED:
-            return f"  {icon} {name_padded} skipped"
-        else:
-            return f"  {icon} {name_padded} idle"
-
-    def render(self) -> str:
-        return f" 📊 Agent Status\n{self._agent_display}"
+    console.print(f"  [dim]{'─' * (width - 4)}[/dim]")
+    console.print()
 
 
-class CycleSummary(Static):
-    """Bottom panel showing last cycle's key metrics."""
+# ── Footer / Status line ─────────────────────────────────────────────────────
 
-    _summary_text = reactive(" 📈 Awaiting first cycle…")
-
-    def update_metrics(self, metrics: CycleMetrics) -> None:
-        parts = []
-        if metrics.total_tokens > 0:
-            parts.append(f"{metrics.total_tokens:,} tok")
-        if metrics.llm_calls > 0:
-            parts.append(f"{metrics.llm_calls} calls")
-        if metrics.cycle_time > 0:
-            parts.append(f"⏱️ {metrics.cycle_time:.1f}s")
-        if metrics.files_written > 0:
-            parts.append(f"📄 {metrics.files_written} files")
-        if metrics.tests_total > 0:
-            parts.append(f"🧪 {metrics.tests_passed}/{metrics.tests_total}")
-        if metrics.review_score > 0:
-            parts.append(f"⭐ {metrics.review_score:.0f}/10")
-
-        if parts:
-            self._summary_text = f" 📈 Cycle #{metrics.iteration}: {' │ '.join(parts)}"
-        else:
-            self._summary_text = f" 📈 Cycle #{metrics.iteration}: completed"
-
-    def render(self) -> str:
-        return self._summary_text
+def print_cycle_header(iteration: int, phase: str, state: str):
+    """Print a cycle separator."""
+    width = shutil.get_terminal_size((80, 24)).columns
+    console.print()
+    console.print(f"  [dim]{'─' * (width - 4)}[/dim]")
+    console.print(f"  [bold cyan]Cycle #{iteration}[/bold cyan] [dim]| {phase} | {state}[/dim]")
+    console.print()
 
 
-# ── Main App ──────────────────────────────────────────────────────────────────
+def print_cycle_metrics(metrics: CycleMetrics):
+    """Print compact cycle metrics inline."""
+    parts = []
+    if metrics.total_tokens > 0:
+        parts.append(f"{metrics.total_tokens:,} tok")
+    if metrics.llm_calls > 0:
+        parts.append(f"{metrics.llm_calls} calls")
+    if metrics.cycle_time > 0:
+        parts.append(f"{metrics.cycle_time:.1f}s")
+    if metrics.files_written > 0:
+        parts.append(f"{metrics.files_written} files")
+    if metrics.tests_total > 0:
+        parts.append(f"test {metrics.tests_passed}/{metrics.tests_total}")
+    if metrics.review_score > 0:
+        parts.append(f"{metrics.review_score:.0f}/10")
 
-class AdelieApp(App):
-    """A Textual-based TUI dashboard for Adelie."""
+    if parts:
+        console.print(f"  [dim]{' · '.join(parts)}[/dim]")
 
-    CSS = """
-    StatusHeader {
-        height: 5;
-        background: $panel;
-        border: solid $primary;
-        padding: 0 1;
-        color: $text;
-    }
 
-    AgentTracker {
-        height: auto;
-        min-height: 6;
-        max-height: 12;
-        background: $panel;
-        border: solid $secondary;
-        padding: 0 1;
-        color: $text;
-    }
+def print_agent_event(name: str, info: AgentInfo):
+    """Print an agent state change inline."""
+    color = AGENT_COLORS.get(name, "white")
+    if info.state == AgentState.RUNNING:
+        console.print(f"  [{color}]{name}[/{color}] [dim]running…[/dim]")
+    elif info.state == AgentState.DONE:
+        elapsed = f" ({info.elapsed:.1f}s)" if info.elapsed > 0 else ""
+        detail = f" — {info.detail}" if info.detail else ""
+        console.print(f"  [{color}]{name}[/{color}] done{elapsed}{detail}")
+    elif info.state == AgentState.ERROR:
+        console.print(f"  [red]{name}[/red] [bold red]error[/bold red]: {info.detail}")
+    elif info.state == AgentState.SKIPPED:
+        console.print(f"  [dim]{name} skipped[/dim]")
 
-    #activity_log {
-        height: 1fr;
-        border: solid $accent;
-        background: $surface;
-    }
 
-    CycleSummary {
-        height: 2;
-        background: $panel;
-        border: solid $success;
-        padding: 0 1;
-        color: $text;
-    }
+# ── Help text ─────────────────────────────────────────────────────────────────
 
-    Input {
-        dock: bottom;
-        margin: 0 1;
-    }
+HELP_TEXT = """\
+[bold]Commands:[/bold]
+  [cyan]/help[/cyan]                 Show this help
+  [cyan]/status[/cyan]               Show orchestrator status
+  [cyan]/pause[/cyan]                Pause before next cycle
+  [cyan]/resume[/cyan]               Resume from pause
+  [cyan]/feedback <msg>[/cyan]       Send feedback to AI
+  [cyan]/commands[/cyan]             List custom commands
+  [cyan]/plan[/cyan]                 Show pending plan (Plan Mode)
+  [cyan]/approve[/cyan]              Approve pending plan
+  [cyan]/reject [reason][/cyan]      Reject pending plan
+  [cyan]/exit[/cyan], [cyan]/quit[/cyan]         Stop and exit\
+"""
+
+
+# ── Main REPL ─────────────────────────────────────────────────────────────────
+
+class AdelieApp:
+    """
+    Non-TUI interactive REPL for the Adelie orchestrator.
+
+    Output flows naturally in the terminal — scrollable and copyable.
+    The orchestrator runs in a background thread while the main thread
+    reads commands via input().
     """
 
-    BINDINGS = [
-        ("ctrl+d", "quit", "Quit"),
-        ("ctrl+c", "quit", "Quit"),
-        ("ctrl+l", "clear_log", "Clear Log"),
-    ]
-
-    def __init__(self, orchestrator: Orchestrator, **kwargs):
-        super().__init__(**kwargs)
+    def __init__(self, orchestrator: Orchestrator):
         self.orchestrator = orchestrator
         self._ui_logger: Optional[UILogger] = None
+        self._running = True
+        self._orch_thread: Optional[threading.Thread] = None
 
-    def compose(self) -> ComposeResult:
-        """Create the dashboard layout."""
-        yield Header(show_clock=True)
-        with Vertical():
-            yield StatusHeader(id="status_header")
-            yield AgentTracker(id="agent_tracker")
-            yield RichLog(id="activity_log", markup=True, highlight=True, auto_scroll=True)
-            yield CycleSummary(id="cycle_summary")
-        yield Input(
-            placeholder="Type /help for commands, or write feedback directly…",
-            id="command_input",
+    def run(self):
+        """Start the orchestrator and enter the command loop."""
+        import adelie.config as cfg
+
+        # Determine model string
+        if cfg.LLM_PROVIDER == "gemini":
+            model_str = f"gemini · {cfg.GEMINI_MODEL}"
+        else:
+            model_str = f"ollama · {cfg.OLLAMA_MODEL}"
+
+        # Print header
+        print_header(
+            goal=self.orchestrator.goal,
+            phase=self.orchestrator.phase,
+            model=model_str,
+            workspace=str(cfg.PROJECT_ROOT),
         )
-        yield Footer()
 
-    def on_mount(self) -> None:
-        """Initialize the dashboard and start the orchestrator."""
-        self.title = "🐧 Adelie"
-        self.sub_title = "Autonomous AI Loop"
+        # Setup UILogger
+        self._setup_logger()
 
-        # Get widgets
-        status = self.query_one("#status_header", StatusHeader)
-        tracker = self.query_one("#agent_tracker", AgentTracker)
-        log = self.query_one("#activity_log", RichLog)
-        summary = self.query_one("#cycle_summary", CycleSummary)
-
-        # Set initial status
-        status.goal = self.orchestrator.goal
-        status.phase = self.orchestrator.phase
-        status.state = self.orchestrator.state.value
-
-        # Initialize agent display
-        tracker._refresh_display()
-
-        # Create UILogger and wire up callbacks
-        self._ui_logger = UILogger()
-
-        def _on_agent_update(name: str, info: AgentInfo):
-            self.call_from_thread(tracker.update_agent, name, info)
-
-        def _on_log(category: LogCategory, obj):
-            # Color-code by category
-            if category == LogCategory.ERROR:
-                self.call_from_thread(log.write, obj)
-            elif category == LogCategory.WARNING:
-                self.call_from_thread(log.write, obj)
-            elif category == LogCategory.PHASE_CHANGE:
-                self.call_from_thread(log.write, obj)
-            elif category == LogCategory.AGENT_START:
-                self.call_from_thread(log.write, obj)
-            elif category == LogCategory.AGENT_END:
-                self.call_from_thread(log.write, obj)
-            elif category == LogCategory.CYCLE_SUMMARY:
-                # Don't write cycle summary to log — it goes to CycleSummary widget
-                pass
-            elif category == LogCategory.CYCLE_HEADER:
-                self.call_from_thread(log.write, obj)
-            else:
-                # INFO and other categories
-                self.call_from_thread(log.write, obj)
-
-        def _on_cycle_start(iteration: int, phase: str, state: str):
-            self.call_from_thread(self._update_status, iteration, phase, state)
-
-        def _on_cycle_metrics(metrics: CycleMetrics):
-            self.call_from_thread(summary.update_metrics, metrics)
-
-        self._ui_logger.on_agent_update = _on_agent_update
-        self._ui_logger.on_log = _on_log
-        self._ui_logger.on_cycle_start = _on_cycle_start
-        self._ui_logger.on_cycle_metrics = _on_cycle_metrics
-
-        # Patch all module consoles with UILogger
+        # Patch consoles
         self._patch_consoles()
 
-        # Wire orchestrator's direct event callbacks (more reliable than pattern matching)
-        def _orch_agent_start(agent_name: str):
+        # Wire orchestrator callbacks
+        self._wire_orchestrator()
+
+        console.print("[dim]Type '/help' for a list of commands.[/dim]")
+        console.print()
+
+        # Start orchestrator in background
+        self._orch_thread = threading.Thread(
+            target=self._run_orchestrator, daemon=True
+        )
+        self._orch_thread.start()
+
+        # Handle Ctrl+C gracefully
+        original_sigint = signal.getsignal(signal.SIGINT)
+
+        def _sigint_handler(signum, frame):
+            console.print("\n[yellow]Shutting down…[/yellow]")
+            self._shutdown()
+
+        signal.signal(signal.SIGINT, _sigint_handler)
+
+        # Command input loop
+        try:
+            while self._running:
+                try:
+                    text = input("> ").strip()
+                except EOFError:
+                    break
+
+                if not text:
+                    continue
+
+                if text.startswith("/"):
+                    self._handle_command(text)
+                else:
+                    # Treat bare text as feedback
+                    self._handle_command(f"/feedback {text}")
+        except KeyboardInterrupt:
+            pass
+        finally:
+            signal.signal(signal.SIGINT, original_sigint)
+            self._shutdown()
+
+    def _setup_logger(self):
+        """Create UILogger and wire callbacks."""
+        self._ui_logger = UILogger()
+
+        self._ui_logger.on_agent_update = lambda name, info: print_agent_event(name, info)
+        self._ui_logger.on_log = lambda category, obj: console.print(obj)
+        self._ui_logger.on_cycle_start = lambda it, ph, st: print_cycle_header(it, ph, st)
+        self._ui_logger.on_cycle_metrics = lambda m: print_cycle_metrics(m)
+
+    def _wire_orchestrator(self):
+        """Wire orchestrator event callbacks."""
+        def _on_agent_start(agent_name: str):
             self._ui_logger.set_agent_state(agent_name, AgentState.RUNNING)
 
-        def _orch_agent_end(agent_name: str, detail: str):
+        def _on_agent_end(agent_name: str, detail: str):
             state = AgentState.ERROR if "error" in detail.lower() else AgentState.DONE
             self._ui_logger.set_agent_state(agent_name, state, detail)
 
-        def _orch_cycle_start(iteration: int, phase: str, state: str):
-            self.call_from_thread(self._update_status, iteration, phase, state)
+        def _on_cycle_start(iteration: int, phase: str, state: str):
+            print_cycle_header(iteration, phase, state)
             self._ui_logger.reset_agents()
-            self.call_from_thread(tracker.reset_all)
 
         self.orchestrator.set_ui_callbacks(
-            on_agent_start=_orch_agent_start,
-            on_agent_end=_orch_agent_end,
-            on_cycle_start=_orch_cycle_start,
+            on_agent_start=_on_agent_start,
+            on_agent_end=_on_agent_end,
+            on_cycle_start=_on_cycle_start,
         )
 
-        # Focus input and start
-        self.query_one(Input).focus()
-        log.write("[bold cyan]🐧 Adelie Dashboard initialized. Starting orchestrator…[/bold cyan]")
-        log.write("[dim]Type '/help' for a list of commands.[/dim]\n")
-
-        self.run_orchestrator()
-
-    def _update_status(self, iteration: int, phase: str, state: str) -> None:
-        """Update the status header from the orchestrator thread."""
-        status = self.query_one("#status_header", StatusHeader)
-        status.cycle = iteration
-        if phase:
-            status.phase = phase
-        if state:
-            status.state = state
-
-    def _patch_consoles(self) -> None:
+    def _patch_consoles(self):
         """Replace console objects in all Adelie modules with UILogger."""
         import adelie.orchestrator as orch_module
         import adelie.agents.writer_ai as writer_module
@@ -341,92 +279,52 @@ class AdelieApp(App):
             interactive_module,
         ]
 
-        # Optionally patch research and tester if available
-        try:
-            import adelie.agents.research_ai as research_module
-            modules.append(research_module)
-        except ImportError:
-            pass
-        try:
-            import adelie.agents.tester_ai as tester_module
-            modules.append(tester_module)
-        except ImportError:
-            pass
-        try:
-            import adelie.agents.reviewer_ai as reviewer_module
-            modules.append(reviewer_module)
-        except ImportError:
-            pass
+        for mod_name in (
+            "adelie.agents.research_ai",
+            "adelie.agents.tester_ai",
+            "adelie.agents.reviewer_ai",
+        ):
+            try:
+                import importlib
+                mod = importlib.import_module(mod_name)
+                modules.append(mod)
+            except ImportError:
+                pass
 
         for mod in modules:
             mod.console = self._ui_logger
 
-    @work(thread=True)
-    def run_orchestrator(self) -> None:
-        """Run the orchestrator loop in a background thread."""
+    def _run_orchestrator(self):
+        """Run the orchestrator loop (called in background thread)."""
         try:
             self.orchestrator.run_loop()
         except Exception as e:
-            self.call_from_thread(self._handle_crash, e)
+            console.print(f"\n[bold red]ERROR: Orchestrator crashed: {e}[/bold red]")
         finally:
-            self.call_from_thread(self._handle_finish)
+            console.print("\n[dim]Orchestrator loop finished.[/dim]")
+            self._running = False
+            # Print a newline so the input prompt doesn't hang
+            print()
 
-    def _handle_crash(self, e: Exception) -> None:
-        log = self.query_one("#activity_log", RichLog)
-        log.write(f"\n[bold red]❌ Orchestrator crashed: {e}[/bold red]")
-        self.sub_title = "CRASHED"
+    def _shutdown(self):
+        """Gracefully stop the orchestrator."""
+        self._running = False
+        self.orchestrator._running = False
+        if getattr(self.orchestrator, "_pause_requested", False):
+            self.orchestrator.resume()
 
-    def _handle_finish(self) -> None:
-        log = self.query_one("#activity_log", RichLog)
-        log.write("\n[dim]Orchestrator loop finished.[/dim]")
-
-    def action_clear_log(self) -> None:
-        """Clear the activity log."""
-        self.query_one("#activity_log", RichLog).clear()
-
-    async def on_input_submitted(self, event: Input.Submitted) -> None:
-        """Handle command input."""
-        text = event.value.strip()
-        if not text:
-            return
-
-        input_widget = self.query_one(Input)
-        input_widget.value = ""
-
-        log = self.query_one("#activity_log", RichLog)
-        log.write(f"[bold blue]❯ {text}[/bold blue]")
-
-        if text.startswith("/"):
-            self._handle_command(text, log)
-        else:
-            self._handle_command(f"/feedback {text}", log)
-
-    def _handle_command(self, text: str, log: RichLog) -> None:
+    def _handle_command(self, text: str):
         """Parse and execute slash commands."""
         parts = text.split(" ", 1)
         cmd = parts[0].lower()
         args = parts[1] if len(parts) > 1 else ""
 
         if cmd in ("/quit", "/exit"):
-            log.write("[yellow]Shutting down…[/yellow]")
-            self.orchestrator._running = False
-            if getattr(self.orchestrator, "_pause_requested", False):
-                self.orchestrator.resume()
-            self.call_later(self.exit)
+            console.print("[yellow]Shutting down…[/yellow]")
+            self._shutdown()
 
         elif cmd == "/help":
-            help_text = (
-                "[bold]Commands:[/bold]\n"
-                "  [cyan]/help[/cyan]                 Show this help\n"
-                "  [cyan]/status[/cyan]               Show orchestrator status\n"
-                "  [cyan]/pause[/cyan]                Pause before next cycle\n"
-                "  [cyan]/resume[/cyan]               Resume from pause\n"
-                "  [cyan]/feedback <msg>[/cyan]       Send feedback to AI\n"
-                "  [cyan]/clear[/cyan]                Clear the log\n"
-                "  [cyan]/verbose[/cyan]              Toggle verbose logging\n"
-                "  [cyan]/exit[/cyan], [cyan]/quit[/cyan]         Stop and exit"
-            )
-            log.write(help_text)
+            console.print(HELP_TEXT)
 
         elif cmd == "/status":
             state = self.orchestrator.state.value if self.orchestrator.state else "unknown"
@@ -434,49 +332,37 @@ class AdelieApp(App):
             iteration = self.orchestrator.loop_iteration
             paused = "PAUSED" if getattr(self.orchestrator, "_pause_requested", False) else "RUNNING"
 
-            log.write(
+            console.print(
                 f"[bold cyan]Status[/bold cyan]: {paused}\n"
-                f"  Phase: {phase}  │  State: {state}  │  Cycle: {iteration}"
+                f"  Phase: {phase}  |  State: {state}  |  Cycle: {iteration}"
             )
 
-            # Show agent states
             if self._ui_logger:
-                agent_lines = []
+                agent_parts = []
                 for name, info in self._ui_logger.agents.items():
-                    agent_lines.append(f"  {name}: {info.state.value}")
-                if agent_lines:
-                    log.write("[dim]" + "  ".join(agent_lines) + "[/dim]")
+                    if info.state != AgentState.IDLE:
+                        color = AGENT_COLORS.get(name, "white")
+                        agent_parts.append(f"[{color}]{name}[/{color}]: {info.state.value}")
+                if agent_parts:
+                    console.print("  " + "  ".join(agent_parts))
 
         elif cmd == "/pause":
             if getattr(self.orchestrator, "_pause_requested", False):
-                log.write("[yellow]Already paused.[/yellow]")
+                console.print("[yellow]Already paused.[/yellow]")
             else:
                 self.orchestrator.pause()
-                log.write("[yellow]⏸️  Pause requested — will pause at next cycle start.[/yellow]")
-                status = self.query_one("#status_header", StatusHeader)
-                status.state = "pausing"
+                console.print("[yellow]Pause requested — will pause at next cycle start.[/yellow]")
 
         elif cmd == "/resume":
             if not getattr(self.orchestrator, "_pause_requested", False):
-                log.write("[dim]Not paused.[/dim]")
+                console.print("[dim]Not paused.[/dim]")
             else:
                 self.orchestrator.resume()
-                log.write("[green]▶️  Resuming…[/green]")
-                status = self.query_one("#status_header", StatusHeader)
-                status.state = "normal"
-
-        elif cmd == "/clear":
-            log.clear()
-
-        elif cmd == "/verbose":
-            # Toggle verbose mode — show/hide debug messages
-            if self._ui_logger:
-                # Simple toggle by changing the on_log callback
-                log.write("[dim]Verbose mode toggled (reload to change)[/dim]")
+                console.print("[green]Resuming…[/green]")
 
         elif cmd == "/feedback":
             if not args.strip():
-                log.write("[red]Usage: /feedback <message>[/red]")
+                console.print("[red]Usage: /feedback <message>[/red]")
                 return
 
             from adelie.cli import cmd_feedback
@@ -490,9 +376,92 @@ class AdelieApp(App):
 
             try:
                 cmd_feedback(FakeArgs(args))
-                log.write(f"[green]✅ Feedback recorded.[/green]")
+                console.print("[green]Feedback recorded.[/green]")
             except Exception as e:
-                log.write(f"[red]❌ Failed: {e}[/red]")
+                console.print(f"[red]ERROR: Failed: {e}[/red]")
+
+        elif cmd == "/commands":
+            cmds = load_commands()
+            if not cmds:
+                console.print("[dim]No custom commands found. Create .adelie/commands/<name>.md[/dim]")
+            else:
+                console.print("[bold]Custom Commands:[/bold]")
+                for c in cmds:
+                    console.print(f"  [cyan]/{c.name}[/cyan]  {c.description}")
+
+        elif cmd == "/plan":
+            # Plan Mode: show pending plan
+            from adelie.plan_mode import PlanManager
+            plan_mgr = PlanManager()
+            pending = plan_mgr.get_pending()
+            if pending:
+                console.print(f"\n[bold cyan]Pending Plan: {pending.plan_id}[/bold cyan]")
+                console.print(f"  Cycle: #{pending.cycle}  |  Created: {pending.created_at}")
+                if pending.expert_reasoning:
+                    console.print(f"  Reasoning: {pending.expert_reasoning[:200]}")
+                console.print(f"  Tasks ({len(pending.coder_tasks)}):")
+                for i, task in enumerate(pending.coder_tasks, 1):
+                    name = task.get('name', f'task_{i}')
+                    desc = task.get('task', task.get('description', ''))[:100]
+                    console.print(f"    {i}. [bold]{name}[/bold]: {desc}")
+                console.print(f"\n  [dim]/approve to execute, /reject [reason] to reject[/dim]")
+            else:
+                console.print("[dim]No pending plans.[/dim]")
+
+        elif cmd == "/approve":
+            from adelie.plan_mode import PlanManager
+            plan_mgr = PlanManager()
+            pending = plan_mgr.get_pending()
+            if pending:
+                plan_mgr.approve(pending.plan_id)
+                console.print(f"[green]✅ Plan approved: {pending.plan_id} — will execute next cycle[/green]")
+            else:
+                console.print("[dim]No pending plans to approve.[/dim]")
+
+        elif cmd == "/reject":
+            from adelie.plan_mode import PlanManager
+            plan_mgr = PlanManager()
+            pending = plan_mgr.get_pending()
+            if pending:
+                reason = args.strip() if args else "Rejected by user"
+                plan_mgr.reject(pending.plan_id, reason)
+                console.print(f"[yellow]❌ Plan rejected: {pending.plan_id}[/yellow]")
+                # Send rejection as feedback
+                try:
+                    from adelie.cli import cmd_feedback
+                    import argparse
+                    class FakeArgs(argparse.Namespace):
+                        def __init__(self, msg):
+                            self.message = msg
+                            self.priority = "high"
+                            self.list_pending = False
+                    cmd_feedback(FakeArgs(f"Plan rejected: {reason}"))
+                except Exception:
+                    pass
+            else:
+                console.print("[dim]No pending plans to reject.[/dim]")
 
         else:
-            log.write(f"[red]Unknown command: {cmd}. Type /help[/red]")
+            # Check if it's a custom command
+            cmd_name = cmd.lstrip("/")
+            custom = get_command(cmd_name)
+            if custom:
+                rendered = custom.render(args)
+                console.print(f"[cyan]Running custom command: {cmd_name}[/cyan]")
+                # Inject as feedback/intervention
+                from adelie.cli import cmd_feedback
+                import argparse
+
+                class FakeArgs(argparse.Namespace):
+                    def __init__(self, msg):
+                        self.message = msg
+                        self.priority = "high"
+                        self.list_pending = False
+
+                try:
+                    cmd_feedback(FakeArgs(rendered))
+                    console.print(f"[green]Command dispatched.[/green]")
+                except Exception as e:
+                    console.print(f"[red]ERROR: {e}[/red]")
+            else:
+                console.print(f"[red]Unknown command: {cmd}. Type /help[/red]")

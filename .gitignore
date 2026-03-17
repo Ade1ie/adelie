@@ -43,3 +43,7 @@ workspace/
 
 # Logs
 *.log
+
+
+# for the code ref
+gemini-cli-main/

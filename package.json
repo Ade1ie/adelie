@@ -1,29 +1,43 @@
 {
   "name": "adelie",
   "version": "0.1.0",
-  "description": "🐧 Adelie — Self-Communicating Autonomous AI Loop CLI",
+  "description": "Adelie — Self-Communicating Autonomous AI Loop CLI",
   "bin": {
     "adelie": "./bin/adelie.js"
   },
   "scripts": {
+    "prepack": "find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null; true",
     "postinstall": "node scripts/postinstall.js"
   },
   "files": [
     "bin/",
     "scripts/",
     "adelie/",
-    "requirements.txt"
+    "requirements.txt",
+    "README.md",
+    "LICENSE"
   ],
   "keywords": [
     "ai",
     "autonomous",
     "ollama",
     "gemini",
-    "cli"
+    "cli",
+    "agent",
+    "llm"
   ],
-  "author": "",
+  "author": "kimhyunbin",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kimhyunbin/Adelie.git"
+  },
+  "homepage": "https://github.com/kimhyunbin/Adelie",
+  "bugs": {
+    "url": "https://github.com/kimhyunbin/Adelie/issues"
+  },
   "engines": {
     "node": ">=16.0.0"
-  }
+  },
+  "os": ["darwin", "linux", "win32"]
 }

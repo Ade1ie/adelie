@@ -24,8 +24,9 @@ from pathlib import Path
 
 from rich.console import Console
 
-from adelie.config import WORKSPACE_PATH, PROJECT_ROOT
+from adelie.config import WORKSPACE_PATH, PROJECT_ROOT, SANDBOX_MODE
 from adelie.llm_client import generate
+from adelie.tool_registry import get_registry as get_tool_registry
 
 console = Console()
 
@@ -342,6 +343,12 @@ def run_pipeline(
     env_strategy = select_strategy(env_profile, phase=get_current_phase())
     console.print(f"  [dim]🌐 {get_env_summary(env_profile, env_strategy)}[/dim]")
 
+    # ── Sandbox Mode ──────────────────────────────────────────────────────
+    from adelie.sandbox import get_effective_mode, get_sandbox_summary, SandboxMode
+    sandbox_mode = get_effective_mode(SANDBOX_MODE)
+    if sandbox_mode != SandboxMode.NONE:
+        console.print(f"  [dim]{get_sandbox_summary(sandbox_mode)}[/dim]")
+
     # Cleanup dead processes first
     _cleanup_dead_processes()
 
@@ -443,6 +450,11 @@ def run_pipeline(
 
             # Wrap command with environment strategy
             cmd = wrap_command(cmd, env_profile, env_strategy)
+
+            # Apply sandbox wrapping
+            if sandbox_mode != SandboxMode.NONE:
+                from adelie.sandbox import wrap_command as sandbox_wrap
+                cmd = sandbox_wrap(cmd, sandbox_mode, workspace_root)
 
             cwd = workspace_root / cwd_rel
             console.print(f"  [blue]▶[/blue] {desc}: {cmd}")

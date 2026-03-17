@@ -22,44 +22,18 @@ from rich.console import Console
 
 from adelie.config import WORKSPACE_PATH, PROJECT_ROOT
 from adelie.llm_client import generate
+from adelie.rules_loader import get_rules_prompt_section, get_context_prompt_section
+from adelie.prompt_loader import load_prompt
+from adelie.skill_manager import get_skills_prompt_section
 
 console = Console()
 
 REVIEW_ROOT = WORKSPACE_PATH.parent / "reviews"
 
-SYSTEM_PROMPT = """You are Reviewer AI — a senior code reviewer in an autonomous AI loop.
+_FALLBACK_PROMPT = """You are Reviewer AI — a senior code reviewer in an autonomous AI loop.
+Output a single valid JSON object with overall_score, issues, summary, and approved fields."""
 
-You receive source code files produced by Coder AI and must review them for:
-1. **Bugs** — Logic errors, off-by-one, null references, race conditions
-2. **Security** — SQL injection, XSS, hardcoded secrets, insecure defaults
-3. **Quality** — Code style, naming, DRY violations, missing error handling
-4. **Architecture** — Does the code follow the project's architecture from the KB?
-5. **Completeness** — Missing imports, incomplete functions, TODO/FIXME items
-
-Output a single valid JSON object:
-{
-  "overall_score": 8,
-  "issues": [
-    {
-      "severity": "CRITICAL|WARNING|INFO",
-      "file": "src/api/auth.py",
-      "line": 42,
-      "title": "SQL Injection vulnerability",
-      "description": "User input is directly interpolated into SQL query",
-      "suggestion": "Use parameterized queries instead"
-    }
-  ],
-  "summary": "Brief overall assessment",
-  "approved": true
-}
-
-RULES:
-- overall_score: 1-10 (10 = perfect)
-- Set approved to false if ANY critical issues exist
-- Be thorough but fair — don't flag style opinions as CRITICAL
-- Focus on issues that would cause runtime failures or security breaches
-- If code looks good, say so — don't invent problems
-"""
+SYSTEM_PROMPT = load_prompt("reviewer", _FALLBACK_PROMPT)
 
 
 def run_review(
@@ -107,6 +81,7 @@ def run_review(
         f"## Coder: {coder_name}\n"
         f"## Files to Review\n\n"
         + "\n\n".join(file_contents)
+        + f"\n\n{get_context_prompt_section()}{get_rules_prompt_section()}{get_skills_prompt_section('reviewer')}"
         + "\n\nReview these files and output a JSON object."
     )
 

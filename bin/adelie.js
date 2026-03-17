@@ -40,11 +40,11 @@ function findSystemPython() {
 function ensureVenv() {
   if (fs.existsSync(PYTHON_BIN)) return;
 
-  console.log("🐧 Adelie — Setting up Python environment...");
+  console.log("[adelie] Setting up Python environment...");
   const sysPython = findSystemPython();
   if (!sysPython) {
-    console.error("❌ Python 3 is required but not found.");
-    console.error("   Install it from: https://www.python.org/downloads/");
+    console.error("[adelie] ERROR: Python 3 is required but not found.");
+    console.error("         Install from: https://www.python.org/downloads/");
     process.exit(1);
   }
 
@@ -54,9 +54,9 @@ function ensureVenv() {
       ? path.join(VENV_DIR, "Scripts", "pip")
       : path.join(VENV_DIR, "bin", "pip");
     execSync(`"${pip}" install -r "${REQUIREMENTS}"`, { stdio: "inherit" });
-    console.log("✅ Python environment ready.");
+    console.log("[adelie] Python environment ready.");
   } catch (err) {
-    console.error(`❌ Failed to set up Python environment: ${err.message}`);
+    console.error(`[adelie] ERROR: Failed to set up Python environment: ${err.message}`);
     process.exit(1);
   }
 }
@@ -77,6 +77,6 @@ const child = spawn(PYTHON_BIN, [CLI_PY, ...process.argv.slice(2)], {
 
 child.on("close", (code) => process.exit(code ?? 0));
 child.on("error", (err) => {
-  console.error(`❌ Failed to run Adelie: ${err.message}`);
+  console.error(`[adelie] ERROR: Failed to run: ${err.message}`);
   process.exit(1);
 });

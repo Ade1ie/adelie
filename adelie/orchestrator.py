@@ -759,6 +759,39 @@ class Orchestrator:
         all_written_files: list[dict] = []
         research_queries = decision.get("research_queries", [])
 
+        # ── Plan Mode: intercept coder tasks for user approval ────────────
+        from adelie.config import PLAN_MODE_ENABLED
+        if PLAN_MODE_ENABLED and coder_tasks and self.phase != "initial":
+            from adelie.plan_mode import PlanManager
+            plan_mgr = PlanManager()
+            # Expire old pending plans
+            plan_mgr.expire_old_pending()
+            # Check if there's an approved plan with these tasks
+            pending = plan_mgr.get_pending()
+            if pending is None:
+                # Create a new plan and wait
+                plan = plan_mgr.create_plan(
+                    cycle=self.loop_iteration,
+                    coder_tasks=coder_tasks,
+                    expert_reasoning=decision.get("reasoning", ""),
+                )
+                console.print(
+                    f"[bold yellow]📋 Plan Mode: Plan created ({plan.plan_id}) — "
+                    f"{len(coder_tasks)} task(s) awaiting approval[/bold yellow]"
+                )
+                console.print(
+                    f"[dim]  Use /approve to execute, /reject [reason] to reject, "
+                    f"/plan to view details[/dim]"
+                )
+                # Skip coder execution this cycle
+                coder_tasks = []
+            elif pending.status.value == "pending":
+                # Still pending — skip coder execution
+                console.print(
+                    f"[yellow]⏳ Plan Mode: Waiting for plan approval ({pending.plan_id})[/yellow]"
+                )
+                coder_tasks = []
+
         phase2_tasks: dict[str, dict] = {}  # name → {"fn": callable, "args": ...}
 
         # Prepare Research AI task

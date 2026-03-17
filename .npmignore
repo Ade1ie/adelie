@@ -1,0 +1,39 @@
+# Python build artifacts
+**/__pycache__/
+**/*.py[cod]
+**/*$py.class
+**/*.so
+**/*.egg-info/
+**/*.egg
+
+# Virtual environments
+.venv/
+venv/
+
+# Testing
+tests/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Environment & workspace data
+.env
+.env.*
+.adelie/
+workspace/
+staging/
+coder/
+
+# Dev files
+.git/
+.gitignore
+.DS_Store
+docs/
+*.log

@@ -27,7 +27,7 @@ class Phase(str, Enum):
 
 PHASE_INFO: dict[str, dict] = {
     Phase.INITIAL: {
-        "label": "🌱 초기 — Planning & Documentation",
+        "label": "초기 — Planning & Documentation",
         "max_coder_layer": -1,  # No coders in planning phase
         "env_strategies": ["direct"],
         "goal": "프로덕션의 구상과 로드맵 작성. 스스로 생각하는 프로덕션의 비전을 문서화.",
@@ -61,7 +61,7 @@ Your decision criteria in this phase:
     },
 
     Phase.MID: {
-        "label": "🔨 중기 — Implementation & Testing",
+        "label": "중기 — Implementation & Testing",
         "max_coder_layer": 0,  # Layer 0 only: feature coders
         "env_strategies": ["direct"],
         "goal": "프로덕션 완벽 구현. 코드 작성, 테스트, 코드 고도화.",
@@ -105,7 +105,7 @@ CODER TASK RULES FOR MID PHASE:
     },
 
     Phase.MID_1: {
-        "label": "🚀 중기 1기 — Execution & Roadmap Check",
+        "label": "중기 1기 — Execution & Roadmap Check",
         "max_coder_layer": 1,  # Layer 0 + Layer 1: feature + connector coders
         "env_strategies": ["direct", "resolver"],
         "goal": "프로덕션 실행 및 테스트. 로드맵 진행상황 체크, 중복 방지, 발전 가능성 확보.",
@@ -137,7 +137,7 @@ Your decision criteria in this phase:
     },
 
     Phase.MID_2: {
-        "label": "⚡ 중기 2기 — Stabilization & Optimization",
+        "label": "중기 2기 — Stabilization & Optimization",
         "max_coder_layer": 2,  # All layers: feature + connector + infra
         "env_strategies": ["resolver", "docker"],
         "goal": "프로덕션 안정화, 최적화, 배포 준비, 수익화 전략.",
@@ -170,7 +170,7 @@ Your decision criteria in this phase:
     },
 
     Phase.LATE: {
-        "label": "🛡️ 후기 — Maintenance & Evolution",
+        "label": "후기 — Maintenance & Evolution",
         "max_coder_layer": 2,  # All layers active
         "env_strategies": ["docker", "resolver", "direct"],
         "goal": "프로덕션 유지보수, 새 기능 추가, 로드맵 확장.",
@@ -204,7 +204,7 @@ Your decision criteria in this phase:
     },
 
     Phase.EVOLVE: {
-        "label": "🧬 자율 발전 — Autonomous Evolution",
+        "label": "자율 발전 — Autonomous Evolution",
         "max_coder_layer": 2,  # All layers active
         "env_strategies": ["docker", "resolver", "direct"],
         "goal": "AI가 스스로 판단하여 프로덕트의 미래를 결정하고 지속적으로 발전시킴.",

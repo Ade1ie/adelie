@@ -36,12 +36,28 @@ FALLBACK_COOLDOWN_SECONDS: int = int(os.getenv("FALLBACK_COOLDOWN_SECONDS", "60"
 # ── Loop ─────────────────────────────────────────────────────────────────────
 LOOP_INTERVAL_SECONDS: int = int(os.getenv("LOOP_INTERVAL_SECONDS", "30"))
 
+# ── Language ─────────────────────────────────────────────────────────────────
+LANGUAGE: str = os.getenv("ADELIE_LANGUAGE", "ko")  # "ko" or "en"
+
 # ── Browser Search Fallback ──────────────────────────────────────────────────
 BROWSER_SEARCH_ENABLED: bool = os.getenv("BROWSER_SEARCH_ENABLED", "true").lower() in ("true", "1", "yes")
 BROWSER_SEARCH_MAX_PAGES: int = int(os.getenv("BROWSER_SEARCH_MAX_PAGES", "3"))
 
+# ── Plan Mode ────────────────────────────────────────────────────────────────
+# When enabled, code changes require user approval before execution
+PLAN_MODE_ENABLED: bool = os.getenv("PLAN_MODE", "false").lower() in ("true", "1", "yes")
+
+# ── Sandbox Mode ─────────────────────────────────────────────────────────────
+# "none" = no sandbox, "seatbelt" = macOS sandbox-exec, "docker" = Docker container
+SANDBOX_MODE: str = os.getenv("SANDBOX_MODE", "none").lower()
+
 # ── Knowledge Base workspace ─────────────────────────────────────────────────
-WORKSPACE_PATH: Path = Path(os.getenv("WORKSPACE_PATH", "./.adelie/workspace")).resolve()
+_ws_env = os.getenv("WORKSPACE_PATH")
+if _ws_env:
+    WORKSPACE_PATH: Path = Path(_ws_env).resolve()
+else:
+    # Resolve relative to user's working directory, not Python process cwd
+    WORKSPACE_PATH: Path = (_user_cwd / ".adelie" / "workspace").resolve()
 
 # ── Project paths ─────────────────────────────────────────────────────────────
 # ADELIE_ROOT = .adelie/ — internal state (KB, coder logs, runner, tests, etc.)

@@ -27,6 +27,9 @@ from rich.console import Console
 
 from adelie.config import WORKSPACE_PATH, PROJECT_ROOT
 from adelie.llm_client import generate
+from adelie.rules_loader import get_rules_prompt_section, get_context_prompt_section
+from adelie.prompt_loader import load_prompt
+from adelie.skill_manager import get_skills_prompt_section
 
 console = Console()
 
@@ -35,37 +38,10 @@ console = Console()
 CODER_ROOT = WORKSPACE_PATH.parent / "coder"
 STAGING_ROOT = WORKSPACE_PATH.parent / "staging"
 
-SYSTEM_PROMPT = """You are Coder AI — a software engineer in an autonomous AI loop.
+_FALLBACK_PROMPT = """You are Coder AI — a software engineer in an autonomous AI loop.
+Output a single valid JSON array of files to create/update."""
 
-You receive:
-1. A TASK describing what code to write.
-2. CONTEXT from the project's Knowledge Base (architecture, roadmap, etc.).
-3. EXISTING FILES in the workspace that are relevant.
-4. LOWER LAYER LOGS showing what other coders have already built.
-
-Your job:
-1. Read the task and context carefully.
-2. Generate production-quality source code.
-3. Output a single valid JSON array — each element is a file to create/update.
-
-Output format (JSON array):
-[
-  {
-    "filepath": "src/api/auth.py",
-    "language": "python",
-    "content": "full file content here...",
-    "description": "JWT authentication endpoint with login/register"
-  }
-]
-
-RULES:
-- Write COMPLETE, working source code — not pseudocode or placeholders.
-- Use the tech stack and architecture defined in the KB context.
-- Do NOT invent dependencies not mentioned in the context.
-- Each file must be self-contained and ready to use.
-- Keep file paths relative to the project workspace root.
-- If updating an existing file, output the FULL updated content.
-"""
+SYSTEM_PROMPT = load_prompt("coder", _FALLBACK_PROMPT)
 
 
 def _get_coder_log_dir(layer: int, coder_name: str) -> Path:
@@ -176,6 +152,9 @@ def run_coder(
         f"- Layer 1: Domain-level (connects features into backend/frontend/etc)\n"
         f"- Layer 2: Infrastructure-level (deployment, CI/CD, project config)\n\n"
         f"## Project File Tree\n{project_tree}\n\n"
+        f"{get_context_prompt_section()}"
+        f"{get_rules_prompt_section()}"
+        f"{get_skills_prompt_section('coder')}"
         f"## KB Context\n{context}\n\n"
         f"## Existing Source Files\n{existing}\n\n"
         f"## Lower Layer Coder Logs\n{lower_logs}\n\n"
