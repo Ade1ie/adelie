@@ -961,7 +961,14 @@ def cmd_telegram(args: argparse.Namespace) -> None:
             console.print("[dim]Run: adelie telegram setup[/dim]")
             sys.exit(1)
 
-        from adelie.integrations.telegram_bot import AdelieTelegramBot
+        try:
+            from adelie.integrations.telegram_bot import AdelieTelegramBot
+        except ImportError:
+            console.print(
+                "[bold red]ERROR: python-telegram-bot is not installed.[/bold red]\n"
+                "Install it with: [bold]pip install python-telegram-bot[/bold]"
+            )
+            sys.exit(1)
         bot = AdelieTelegramBot(token=token, workspace_path=ws_path)
         bot.start()
 
