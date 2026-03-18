@@ -1457,12 +1457,15 @@ def cmd_metrics(args: argparse.Namespace) -> None:
 
 
 def main() -> None:
+    from adelie import __version__
     parser = argparse.ArgumentParser(
         prog="adelie",
         description="Adelie — Self-Communicating Autonomous AI Loop",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="Run [adelie help] for detailed command reference.",
     )
+    parser.add_argument("-v", "--version", action="version",
+                        version=f"adelie {__version__}")
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
     # ── help ──────
@@ -1653,7 +1656,7 @@ def main() -> None:
         except Exception:
             provider_info = "(not configured)"
         console.print(Panel.fit(
-            f"[bold cyan]Adelie[/bold cyan] — Autonomous AI Loop\n"
+            f"[bold cyan]Adelie[/bold cyan] v{__version__} — Autonomous AI Loop\n"
             f"[dim]LLM: {provider_info}[/dim]",
             border_style="cyan",
         ))

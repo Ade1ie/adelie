@@ -62,14 +62,14 @@ AGENT_COLORS = {
 # ── Header ────────────────────────────────────────────────────────────────────
 
 def print_header(goal: str, phase: str, model: str, workspace: str):
-    """Print the startup header — gemini-cli style ASCII icon + info."""
+    """Print the startup header — penguin ASCII icon + info."""
+    from adelie import __version__
     width = shutil.get_terminal_size((80, 24)).columns
 
     console.print()
-    console.print("  [cyan]▝▜▄[/cyan]    [bold]Adelie[/bold] [dim]v0.1.0[/dim]")
-    console.print(f"    [cyan]▝▜▄[/cyan]  [dim]{model}[/dim]")
-    console.print(f"   [cyan]▗▟▀[/cyan]  [dim]Phase:[/dim] {phase}")
-    console.print(f"  [cyan]▝▀[/cyan]")
+    console.print("    [cyan]  (o_  [/cyan]  [bold]Adelie[/bold] [dim]v" + __version__ + "[/dim]")
+    console.print("    [cyan]  //\\\\  [/cyan]  [dim]" + model + "[/dim]")
+    console.print("    [cyan]  V_/_ [/cyan]  [dim]Phase:[/dim] " + phase)
     console.print()
 
     # Goal
