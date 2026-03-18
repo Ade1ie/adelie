@@ -14,7 +14,13 @@ Layout:
 
 from __future__ import annotations
 
-import readline  # noqa: F401 — enables arrow-key editing in input()
+try:
+    import readline  # noqa: F401 — enables arrow-key editing in input()
+except ImportError:
+    try:
+        import pyreadline3  # noqa: F401 — Windows alternative
+    except ImportError:
+        pass  # arrow-key editing won't work, but no crash
 import shutil
 import signal
 import sys
