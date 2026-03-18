@@ -170,6 +170,8 @@ class AdelieApp:
         self._ui_logger: Optional[UILogger] = None
         self._running = True
         self._orch_thread: Optional[threading.Thread] = None
+        # Capture the original Rich Console BEFORE any patching
+        self._real_console: Console = console
 
     def run(self):
         """Start the orchestrator and enter the command loop."""
@@ -198,8 +200,8 @@ class AdelieApp:
         # Wire orchestrator callbacks
         self._wire_orchestrator()
 
-        console.print("[dim]Type '/help' for a list of commands.[/dim]")
-        console.print()
+        self._real_console.print("[dim]Type '/help' for a list of commands.[/dim]")
+        self._real_console.print()
 
         # Start orchestrator in background
         self._orch_thread = threading.Thread(
@@ -209,9 +211,10 @@ class AdelieApp:
 
         # Handle Ctrl+C gracefully
         original_sigint = signal.getsignal(signal.SIGINT)
+        real_con = self._real_console
 
         def _sigint_handler(signum, frame):
-            console.print("\n[yellow]Shutting down…[/yellow]")
+            real_con.print("\n[yellow]Shutting down…[/yellow]")
             self._shutdown()
 
         signal.signal(signal.SIGINT, _sigint_handler)
@@ -240,10 +243,12 @@ class AdelieApp:
 
     def _setup_logger(self):
         """Create UILogger and wire callbacks."""
+        # Use the saved real console so callbacks never recurse through UILogger
+        real_con = self._real_console
         self._ui_logger = UILogger()
 
         self._ui_logger.on_agent_update = lambda name, info: print_agent_event(name, info)
-        self._ui_logger.on_log = lambda category, obj: console.print(obj)
+        self._ui_logger.on_log = lambda category, obj: real_con.print(obj)
         self._ui_logger.on_cycle_start = lambda it, ph, st: print_cycle_header(it, ph, st)
         self._ui_logger.on_cycle_metrics = lambda m: print_cycle_metrics(m)
 
@@ -267,7 +272,11 @@ class AdelieApp:
         )
 
     def _patch_consoles(self):
-        """Replace console objects in all Adelie modules with UILogger."""
+        """Replace console objects in all Adelie modules with UILogger.
+
+        NOTE: Do NOT patch interactive_module itself — it is the display layer
+        and must keep the real Rich Console to avoid infinite recursion.
+        """
         import adelie.orchestrator as orch_module
         import adelie.agents.writer_ai as writer_module
         import adelie.agents.expert_ai as expert_module
@@ -276,13 +285,11 @@ class AdelieApp:
         import adelie.agents.runner_ai as runner_module
         import adelie.agents.monitor_ai as monitor_module
         import adelie.agents.analyst_ai as analyst_module
-        import adelie.interactive as interactive_module
 
         modules = [
             orch_module, writer_module, expert_module,
             coder_module, coder_manager_module,
             runner_module, monitor_module, analyst_module,
-            interactive_module,
         ]
 
         for mod_name in (
@@ -305,9 +312,9 @@ class AdelieApp:
         try:
             self.orchestrator.run_loop()
         except Exception as e:
-            console.print(f"\n[bold red]ERROR: Orchestrator crashed: {e}[/bold red]")
+            self._real_console.print(f"\n[bold red]ERROR: Orchestrator crashed: {e}[/bold red]")
         finally:
-            console.print("\n[dim]Orchestrator loop finished.[/dim]")
+            self._real_console.print("\n[dim]Orchestrator loop finished.[/dim]")
             self._running = False
             # Print a newline so the input prompt doesn't hang
             print()
