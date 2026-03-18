@@ -239,6 +239,8 @@ def _bootstrap_npm(project_root: Path) -> bool:
 
     Returns True if any attempt succeeded.
     """
+    import sys
+    _win = sys.platform == "win32"
     strategies = [
         ("npm install", "npm install"),
         ("npm install --legacy-peer-deps", "npm install --legacy-peer-deps"),
@@ -248,13 +250,23 @@ def _bootstrap_npm(project_root: Path) -> bool:
     for label, cmd in strategies:
         console.print(f"  [dim]  ▶ {label}…[/dim]")
         try:
-            result = subprocess.run(
-                cmd.split(),
-                cwd=str(project_root),
-                capture_output=True,
-                text=True,
-                timeout=180,
-            )
+            if _win:
+                result = subprocess.run(
+                    cmd,
+                    cwd=str(project_root),
+                    capture_output=True,
+                    text=True,
+                    timeout=180,
+                    shell=True,
+                )
+            else:
+                result = subprocess.run(
+                    cmd.split(),
+                    cwd=str(project_root),
+                    capture_output=True,
+                    text=True,
+                    timeout=180,
+                )
             if result.returncode == 0:
                 console.print(f"  [green]  ✅ {label} succeeded[/green]")
                 return True

@@ -19,6 +19,7 @@ import json
 import re
 import shlex
 import subprocess
+import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -32,6 +33,8 @@ console = Console()
 
 RUNNER_ROOT = WORKSPACE_PATH.parent / "runner"
 PROCESS_FILE = RUNNER_ROOT / "processes.json"
+
+_IS_WINDOWS = sys.platform == "win32"
 
 # Tiered command whitelist
 BUILD_COMMANDS = [
@@ -193,33 +196,52 @@ def _execute(cmd: str, cwd: Path, timeout: int, background: bool = False) -> dic
     try:
         if background:
             # Start and don't wait
-            try:
-                parts = shlex.split(cmd)
-            except ValueError:
-                result["stderr"] = "Malformed command"
-                return result
-            proc = subprocess.Popen(
-                parts,
-                cwd=str(cwd),
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-            )
+            if _IS_WINDOWS:
+                proc = subprocess.Popen(
+                    cmd,
+                    cwd=str(cwd),
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    shell=True,
+                )
+            else:
+                try:
+                    parts = shlex.split(cmd)
+                except ValueError:
+                    result["stderr"] = "Malformed command"
+                    return result
+                proc = subprocess.Popen(
+                    parts,
+                    cwd=str(cwd),
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                )
             result["pid"] = proc.pid
             result["returncode"] = 0
             result["stdout"] = f"Started background process (PID: {proc.pid})"
         else:
-            try:
-                parts = shlex.split(cmd)
-            except ValueError:
-                result["stderr"] = "Malformed command"
-                return result
-            proc = subprocess.run(
-                parts,
-                cwd=str(cwd),
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-            )
+            if _IS_WINDOWS:
+                proc = subprocess.run(
+                    cmd,
+                    cwd=str(cwd),
+                    capture_output=True,
+                    text=True,
+                    timeout=timeout,
+                    shell=True,
+                )
+            else:
+                try:
+                    parts = shlex.split(cmd)
+                except ValueError:
+                    result["stderr"] = "Malformed command"
+                    return result
+                proc = subprocess.run(
+                    parts,
+                    cwd=str(cwd),
+                    capture_output=True,
+                    text=True,
+                    timeout=timeout,
+                )
             result["returncode"] = proc.returncode
             result["stdout"] = proc.stdout[-2000:]
             result["stderr"] = proc.stderr[-2000:]
