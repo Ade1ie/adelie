@@ -965,10 +965,23 @@ def cmd_telegram(args: argparse.Namespace) -> None:
             from adelie.integrations.telegram_bot import AdelieTelegramBot
         except ImportError:
             console.print(
-                "[bold red]ERROR: python-telegram-bot is not installed.[/bold red]\n"
-                "Install it with: [bold]pip install python-telegram-bot[/bold]"
+                "[yellow]python-telegram-bot not found — installing…[/yellow]"
             )
-            sys.exit(1)
+            import subprocess as _sp
+            _sp.check_call(
+                [sys.executable, "-m", "pip", "install", "python-telegram-bot>=20.0"],
+                stdout=_sp.DEVNULL,
+                stderr=_sp.DEVNULL,
+            )
+            try:
+                from adelie.integrations.telegram_bot import AdelieTelegramBot
+            except ImportError:
+                console.print(
+                    "[bold red]ERROR: python-telegram-bot 설치 실패.[/bold red]\n"
+                    "수동 설치: [bold]pip install python-telegram-bot[/bold]"
+                )
+                sys.exit(1)
+            console.print("[green]✅ python-telegram-bot installed.[/green]")
         bot = AdelieTelegramBot(token=token, workspace_path=ws_path)
         bot.start()
 
