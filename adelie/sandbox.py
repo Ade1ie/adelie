@@ -21,6 +21,7 @@ from __future__ import annotations
 import platform
 import shutil
 import subprocess
+from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import Optional
@@ -214,25 +215,141 @@ def _wrap_docker(
     project_root: Path | None = None,
     docker_image: str = "",
 ) -> str:
-    """Wrap command with Docker container isolation."""
+    """Wrap command with Docker container isolation (enhanced)."""
     if not is_docker_available():
         return cmd  # Fallback to no sandbox
 
     root = project_root or PROJECT_ROOT
-    image = docker_image or f"adelie-sandbox-{root.name.lower()}"
+    config = load_docker_config(root)
+    image = docker_image or config.image
 
-    # Mount project directory read-write, everything else read-only
     escaped_cmd = cmd.replace("'", "'\\''")
-    return (
-        f"docker run --rm "
-        f"-v '{root}:/workspace' "
-        f"-w /workspace "
-        f"--network host "
-        f"--memory 512m "
-        f"--cpus 1 "
-        f"{image} "
-        f"bash -c '{escaped_cmd}'"
-    )
+
+    parts = ["docker run --rm"]
+
+    # Workspace mount
+    if config.workspace_access == "rw":
+        parts.append(f"-v '{root}:/workspace'")
+    elif config.workspace_access == "ro":
+        parts.append(f"-v '{root}:/workspace:ro'")
+    # "none" = no workspace mount
+
+    parts.append("-w /workspace")
+
+    # Network isolation (OpenClaw default: "none")
+    parts.append(f"--network {config.network}")
+
+    # Resource limits
+    parts.append(f"--memory {config.memory_limit}")
+    parts.append(f"--cpus {config.cpu_limit}")
+
+    # Security options
+    if config.read_only_root:
+        parts.append("--read-only")
+        parts.append("--tmpfs /tmp:rw,noexec,nosuid")
+
+    # Custom environment variables
+    for key, val in config.env.items():
+        parts.append(f"-e '{key}={val}'")
+
+    # Custom bind mounts (validated)
+    for bind in config.binds:
+        if _is_safe_bind(bind):
+            parts.append(f"-v '{bind}'")
+
+    # User
+    if config.user:
+        parts.append(f"--user {config.user}")
+
+    parts.append(image)
+    parts.append(f"bash -c '{escaped_cmd}'")
+
+    return " ".join(parts)
+
+
+# ── Docker Configuration ─────────────────────────────────────────────────────
+
+
+@dataclass
+class DockerSandboxConfig:
+    """
+    Docker sandbox configuration.
+    Inspired by OpenClaw's agents.defaults.sandbox pattern.
+    """
+    image: str = "adelie-sandbox:latest"
+    workspace_access: str = "rw"       # "none" | "ro" | "rw"
+    network: str = "none"              # "none" | "host" | "bridge" | custom
+    memory_limit: str = "512m"
+    cpu_limit: float = 1.0
+    read_only_root: bool = False
+    user: str = ""                     # e.g. "1000:1000" or "" for default
+    env: dict = field(default_factory=dict)
+    binds: list[str] = field(default_factory=list)     # ["host:container:mode"]
+    setup_command: str = ""            # One-time setup after container create
+
+
+# Dangerous mount paths (OpenClaw pattern)
+_BLOCKED_BIND_PATTERNS = {
+    "/etc", "/proc", "/sys", "/dev",
+    "docker.sock", ".ssh", ".gnupg",
+    "/var/run/docker.sock",
+}
+
+
+def _is_safe_bind(bind: str) -> bool:
+    """Check if a bind mount is safe (doesn't expose dangerous paths)."""
+    source = bind.split(":")[0] if ":" in bind else bind
+    source_lower = source.lower().replace("\\", "/")
+    for blocked in _BLOCKED_BIND_PATTERNS:
+        if blocked in source_lower:
+            return False
+    return True
+
+
+def load_docker_config(project_root: Path | None = None) -> DockerSandboxConfig:
+    """
+    Load Docker sandbox config from .adelie/sandbox.json.
+
+    Example .adelie/sandbox.json:
+    {
+        "docker": {
+            "image": "adelie-sandbox:latest",
+            "workspaceAccess": "rw",
+            "network": "none",
+            "memoryLimit": "1g",
+            "cpuLimit": 2.0,
+            "readOnlyRoot": false,
+            "env": {"NODE_ENV": "production"},
+            "binds": ["/data:/data:ro"]
+        }
+    }
+    """
+    import json as _json
+
+    root = project_root or PROJECT_ROOT
+    config_path = root / ".adelie" / "sandbox.json"
+
+    if not config_path.exists():
+        return DockerSandboxConfig()
+
+    try:
+        raw = _json.loads(config_path.read_text(encoding="utf-8"))
+        docker = raw.get("docker", {})
+
+        return DockerSandboxConfig(
+            image=docker.get("image", "adelie-sandbox:latest"),
+            workspace_access=docker.get("workspaceAccess", "rw"),
+            network=docker.get("network", "none"),
+            memory_limit=docker.get("memoryLimit", "512m"),
+            cpu_limit=docker.get("cpuLimit", 1.0),
+            read_only_root=docker.get("readOnlyRoot", False),
+            user=docker.get("user", ""),
+            env=docker.get("env", {}),
+            binds=docker.get("binds", []),
+            setup_command=docker.get("setupCommand", ""),
+        )
+    except Exception:
+        return DockerSandboxConfig()
 
 
 # ── Mode Detection ───────────────────────────────────────────────────────────
@@ -265,6 +382,7 @@ def get_sandbox_summary(mode: SandboxMode) -> str:
     summaries = {
         SandboxMode.NONE: "🔓 No sandbox — commands run without isolation",
         SandboxMode.SEATBELT: "🔒 macOS Seatbelt — restricted file/network access",
-        SandboxMode.DOCKER: "🐳 Docker — containerized execution",
+        SandboxMode.DOCKER: "🐳 Docker — containerized execution (network isolated)",
     }
     return summaries.get(mode, "Unknown sandbox mode")
+

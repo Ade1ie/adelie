@@ -27,7 +27,7 @@ from rich.panel import Panel
 from rich.rule import Rule
 
 from adelie.agents import expert_ai, writer_ai
-from adelie.config import LOOP_INTERVAL_SECONDS, WORKSPACE_PATH, PROJECT_ROOT, ADELIE_ROOT
+from adelie.config import LOOP_INTERVAL_SECONDS, WORKSPACE_PATH, PROJECT_ROOT, ADELIE_ROOT, MCP_ENABLED
 from adelie.context_compactor import CycleHistory
 from adelie.context_engine import AgentType, AssembledContext, assemble_context, after_cycle, get_budget
 from adelie.hooks import HookEvent, HookManager
@@ -82,6 +82,9 @@ class Orchestrator:
 
         # Hook manager for plugins
         self.hooks = HookManager()
+
+        # MCP manager (lazy — connects on first run)
+        self._mcp_manager = None
 
         # Process supervisor for spawned commands
         self.supervisor = ProcessSupervisor(max_concurrent=5)
@@ -435,6 +438,19 @@ class Orchestrator:
 
         # Verify before promoting
         passed, failed = self._verify_staged_files(written_files)
+
+        # Create checkpoint before overwriting files
+        if passed:
+            try:
+                from adelie.checkpoint import CheckpointManager
+                cp_mgr = CheckpointManager()
+                cp_mgr.create(
+                    files=passed,
+                    cycle=self.loop_iteration,
+                    phase=self.phase,
+                )
+            except Exception as e:
+                console.print(f"[dim]⚠️ Checkpoint creation failed (non-fatal): {e}[/dim]")
 
         promoted = 0
         for finfo in passed:
@@ -1385,7 +1401,9 @@ class Orchestrator:
             f"[bold cyan]Adelie — Single Run[/bold cyan]\nGoal: {self.goal}",
             border_style="cyan",
         ))
+        self._start_mcp()
         self.run_cycle()
+        self._stop_mcp()
         return self.last_expert_output
 
     def run_loop(self) -> None:
@@ -1396,6 +1414,7 @@ class Orchestrator:
             f"Interval: {LOOP_INTERVAL_SECONDS}s  •  Press Ctrl+C to stop",
             border_style="green",
         ))
+        self._start_mcp()
 
         while self._running:
             try:
@@ -1419,4 +1438,49 @@ class Orchestrator:
                 console.print(f"[dim]💤 Sleeping {interval}s before next cycle…[/dim]")
                 time.sleep(interval)
 
+        self._stop_mcp()
         console.print("[bold]✅ Adelie loop stopped cleanly.[/bold]")
+
+    # ── MCP Helpers ──────────────────────────────────────────────────────────
+
+    def _start_mcp(self) -> None:
+        """Connect to configured MCP servers and register tools."""
+        if not MCP_ENABLED:
+            return
+        try:
+            from adelie.mcp_manager import McpManager
+            from adelie.tool_registry import get_registry
+
+            self._mcp_manager = McpManager()
+            self._mcp_manager.load_config()
+
+            if not self._mcp_manager.has_servers:
+                return
+
+            results = self._mcp_manager.start_all()
+            connected = sum(1 for v in results.values() if v)
+
+            if connected > 0:
+                registry = get_registry()
+                count = registry.register_mcp_tools(self._mcp_manager)
+                console.print(
+                    f"[bold cyan]🔌 MCP: {connected} server(s) connected, "
+                    f"{count} tool(s) registered[/bold cyan]"
+                )
+            else:
+                console.print("[dim]🔌 MCP: no servers connected[/dim]")
+
+        except Exception as e:
+            console.print(f"[yellow]⚠️ MCP startup error (non-fatal): {e}[/yellow]")
+
+    def _stop_mcp(self) -> None:
+        """Disconnect all MCP servers and remove tools."""
+        if self._mcp_manager:
+            try:
+                from adelie.tool_registry import get_registry
+                registry = get_registry()
+                registry.remove_mcp_tools()
+                self._mcp_manager.stop_all()
+            except Exception as e:
+                console.print(f"[dim]⚠️ MCP cleanup error: {e}[/dim]")
+            self._mcp_manager = None

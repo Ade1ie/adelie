@@ -1,12 +1,12 @@
 {
-  "name": "adelie",
+  "name": "adelie-ai",
   "version": "0.1.0",
   "description": "Adelie — Self-Communicating Autonomous AI Loop CLI",
   "bin": {
-    "adelie": "./bin/adelie.js"
+    "adelie": "bin/adelie.js"
   },
   "scripts": {
-    "prepack": "find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null; true",
+    "prepack": "node -e \"const fs=require('fs'),path=require('path');function rm(d){try{fs.readdirSync(d).forEach(f=>{const p=path.join(d,f);fs.statSync(p).isDirectory()?f==='__pycache__'?fs.rmSync(p,{recursive:true,force:true}):rm(p):0})}catch(e){}}rm('.');\"",
     "postinstall": "node scripts/postinstall.js"
   },
   "files": [
@@ -30,14 +30,17 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/kimhyunbin/Adelie.git"
+    "url": "git+https://github.com/Ade1ie/adelie.git"
   },
-  "homepage": "https://github.com/kimhyunbin/Adelie",
   "bugs": {
-    "url": "https://github.com/kimhyunbin/Adelie/issues"
+    "url": "https://github.com/Ade1ie/adelie/issues"
   },
   "engines": {
     "node": ">=16.0.0"
   },
-  "os": ["darwin", "linux", "win32"]
+  "os": [
+    "darwin",
+    "linux",
+    "win32"
+  ]
 }

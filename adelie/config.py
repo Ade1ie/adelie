@@ -51,6 +51,9 @@ PLAN_MODE_ENABLED: bool = os.getenv("PLAN_MODE", "false").lower() in ("true", "1
 # "none" = no sandbox, "seatbelt" = macOS sandbox-exec, "docker" = Docker container
 SANDBOX_MODE: str = os.getenv("SANDBOX_MODE", "none").lower()
 
+# ── MCP (Model Context Protocol) ────────────────────────────────────────────
+MCP_ENABLED: bool = os.getenv("MCP_ENABLED", "true").lower() in ("true", "1", "yes")
+
 # ── Knowledge Base workspace ─────────────────────────────────────────────────
 _ws_env = os.getenv("WORKSPACE_PATH")
 if _ws_env:

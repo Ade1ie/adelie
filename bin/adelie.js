@@ -53,7 +53,9 @@ function ensureVenv() {
     const pip = IS_WIN
       ? path.join(VENV_DIR, "Scripts", "pip")
       : path.join(VENV_DIR, "bin", "pip");
-    execSync(`"${pip}" install -r "${REQUIREMENTS}"`, { stdio: "inherit" });
+    const pipEnv = { ...process.env };
+    if (IS_WIN) pipEnv.PYTHONUTF8 = "1";
+    execSync(`"${pip}" install -r "${REQUIREMENTS}"`, { stdio: "inherit", env: pipEnv });
     console.log("[adelie] Python environment ready.");
   } catch (err) {
     console.error(`[adelie] ERROR: Failed to set up Python environment: ${err.message}`);

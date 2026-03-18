@@ -27,6 +27,7 @@ class ToolCategory(str, Enum):
     SEARCH = "search"
     BUILD = "build"
     CUSTOM = "custom"
+    MCP = "mcp"
 
 
 @dataclass
@@ -40,6 +41,8 @@ class Tool:
     enabled: bool = True
     builtin: bool = True        # False for user-defined tools
     handler: Optional[Callable[..., Any]] = field(default=None, repr=False)
+    mcp_server: Optional[str] = None   # MCP server name (for MCP tools)
+    mcp_tool_name: Optional[str] = None  # Original tool name on MCP server
 
 
 class ToolRegistry:
@@ -213,6 +216,47 @@ class ToolRegistry:
         ]
         for tool in builtins:
             self.register(tool)
+
+    # ── MCP Tools ────────────────────────────────────────────────────────────
+
+    def register_mcp_tools(self, mcp_manager) -> int:
+        """
+        Register tools discovered from MCP servers.
+
+        Args:
+            mcp_manager: McpManager instance with connected servers.
+
+        Returns:
+            Number of MCP tools registered.
+        """
+        tools = mcp_manager.get_all_tools()
+        count = 0
+        for mcp_tool in tools:
+            tool = Tool(
+                name=mcp_tool.qualified_name,
+                description=mcp_tool.description,
+                category=ToolCategory.MCP,
+                usage=f"{mcp_tool.name}({', '.join(mcp_tool.input_schema.get('properties', {}).keys())})",
+                agents=[],  # available to all agents
+                enabled=True,
+                builtin=False,
+                mcp_server=mcp_tool.server_name,
+                mcp_tool_name=mcp_tool.name,
+            )
+            self.register(tool)
+            count += 1
+        return count
+
+    def remove_mcp_tools(self) -> int:
+        """Remove all MCP tools from the registry."""
+        mcp_names = [n for n, t in self._tools.items() if t.category == ToolCategory.MCP]
+        for name in mcp_names:
+            del self._tools[name]
+        return len(mcp_names)
+
+    def get_mcp_tools(self) -> list[Tool]:
+        """Get all registered MCP tools."""
+        return [t for t in self._tools.values() if t.category == ToolCategory.MCP]
 
     # ── User-Defined Tools ───────────────────────────────────────────────────
 
