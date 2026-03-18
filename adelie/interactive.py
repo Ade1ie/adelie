@@ -26,7 +26,7 @@ import signal
 import sys
 import threading
 import time
-from typing import Optional
+from typing import Any, Optional
 
 from rich.console import Console
 from rich.text import Text
@@ -172,6 +172,9 @@ class AdelieApp:
         self._orch_thread: Optional[threading.Thread] = None
         # Capture the original Rich Console BEFORE any patching
         self._real_console: Console = console
+        # Dashboard
+        self._dashboard_state: Optional[Any] = None
+        self._dashboard_server: Optional[Any] = None
 
     def run(self):
         """Start the orchestrator and enter the command loop."""
@@ -199,6 +202,9 @@ class AdelieApp:
 
         # Wire orchestrator callbacks
         self._wire_orchestrator()
+
+        # Start dashboard server
+        self._start_dashboard(cfg)
 
         self._real_console.print("[dim]Type '/help' for a list of commands.[/dim]")
         self._real_console.print()
@@ -245,12 +251,47 @@ class AdelieApp:
         """Create UILogger and wire callbacks."""
         # Use the saved real console so callbacks never recurse through UILogger
         real_con = self._real_console
+        ds = self._dashboard_state  # may be None if dashboard disabled
         self._ui_logger = UILogger()
 
-        self._ui_logger.on_agent_update = lambda name, info: print_agent_event(name, info)
-        self._ui_logger.on_log = lambda category, obj: real_con.print(obj)
-        self._ui_logger.on_cycle_start = lambda it, ph, st: print_cycle_header(it, ph, st)
-        self._ui_logger.on_cycle_metrics = lambda m: print_cycle_metrics(m)
+        def _on_agent_update(name, info):
+            print_agent_event(name, info)
+            if ds:
+                ds.update_agent(name, {
+                    "state": info.state.value if hasattr(info, 'state') else str(info.state) if hasattr(info, 'state') else "idle",
+                    "detail": getattr(info, 'detail', '') or '',
+                    "elapsed": getattr(info, 'elapsed', 0) or 0,
+                })
+
+        def _on_log(category, obj):
+            real_con.print(obj)
+            if ds:
+                import re
+                msg = re.sub(r'\[/?[^\]]*\]', '', str(obj))
+                ds.add_log(category.value if hasattr(category, 'value') else str(category), msg)
+
+        def _on_cycle_start(it, ph, st):
+            print_cycle_header(it, ph, st)
+            if ds:
+                ds.update_cycle(it, ph, st)
+
+        def _on_cycle_metrics(m):
+            print_cycle_metrics(m)
+            if ds:
+                ds.update_metrics({
+                    "total_tokens": getattr(m, 'total_tokens', 0),
+                    "calls": getattr(m, 'llm_calls', 0),
+                    "cycle_time": getattr(m, 'cycle_time', 0),
+                    "files_written": getattr(m, 'files_written', 0),
+                    "tests_passed": getattr(m, 'tests_passed', 0),
+                    "tests_total": getattr(m, 'tests_total', 0),
+                    "review_score": getattr(m, 'avg_review_score', 0),
+                })
+
+        self._ui_logger.on_agent_update = _on_agent_update
+        self._ui_logger.on_log = _on_log
+        self._ui_logger.on_cycle_start = _on_cycle_start
+        self._ui_logger.on_cycle_metrics = _on_cycle_metrics
 
     def _wire_orchestrator(self):
         """Wire orchestrator event callbacks."""
@@ -320,11 +361,45 @@ class AdelieApp:
             print()
 
     def _shutdown(self):
-        """Gracefully stop the orchestrator."""
+        """Gracefully stop the orchestrator and dashboard."""
         self._running = False
         self.orchestrator._running = False
         if getattr(self.orchestrator, "_pause_requested", False):
             self.orchestrator.resume()
+        # Stop dashboard server
+        if self._dashboard_server:
+            try:
+                self._dashboard_server.stop()
+            except Exception:
+                pass
+
+    def _start_dashboard(self, cfg):
+        """Start the web dashboard server if enabled."""
+        if not getattr(cfg, 'DASHBOARD_ENABLED', True):
+            return
+        try:
+            from adelie.dashboard import DashboardServer, DashboardState
+            self._dashboard_state = DashboardState()
+            self._dashboard_state.goal = self.orchestrator.goal or ""
+            self._dashboard_state.phase = self.orchestrator.phase or "initial"
+            self._dashboard_state.workspace = str(cfg.PROJECT_ROOT)
+            port = getattr(cfg, 'DASHBOARD_PORT', 5042)
+            self._dashboard_server = DashboardServer(state=self._dashboard_state, port=port)
+            if self._dashboard_server.start():
+                self._real_console.print(
+                    f"[bold cyan]🌐 Dashboard:[/bold cyan] "
+                    f"[link=http://localhost:{port}]http://localhost:{port}[/link]"
+                )
+            else:
+                self._real_console.print(
+                    f"[dim]⚠ Dashboard: port {port} in use, skipping.[/dim]"
+                )
+                self._dashboard_state = None
+                self._dashboard_server = None
+        except Exception as e:
+            self._real_console.print(f"[dim]⚠ Dashboard failed to start: {e}[/dim]")
+            self._dashboard_state = None
+            self._dashboard_server = None
 
     def _handle_command(self, text: str):
         """Parse and execute slash commands."""
