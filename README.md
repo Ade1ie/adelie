@@ -13,7 +13,7 @@
   <a href="https://www.npmjs.com/package/adelie-ai"><img src="https://img.shields.io/npm/v/adelie-ai?style=flat-square&logo=npm&color=CB3837" alt="npm version" /></a>
   <img src="https://img.shields.io/badge/python-3.10+-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python" />
   <img src="https://img.shields.io/badge/LLM-Gemini%20│%20Ollama-FF6F00?style=flat-square" alt="LLM" />
-  <img src="https://img.shields.io/badge/tests-183%20passing-2EA043?style=flat-square" alt="Tests" />
+  <img src="https://img.shields.io/badge/tests-197%20passing-2EA043?style=flat-square" alt="Tests" />
   <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="License" /></a>
 </p>
 
@@ -33,7 +33,7 @@
 Adelie is an autonomous AI orchestrator that plans, codes, reviews, tests, deploys, and evolves software projects through a coordinated multi-agent loop. It ships as a single CLI (`npm install -g adelie-ai`) and requires only an LLM provider — no cloud backend, no account.
 
 ```
-    (o_    Adelie v0.2.0
+    (o_    Adelie v0.2.1
     //\    ollama · deepseek-v3.1:671b-cloud
     V_/_   Phase: mid_2
 ```
@@ -358,7 +358,7 @@ Use functional components with TypeScript props…
 ## Testing
 
 ```bash
-python -m pytest tests/ -v    # 183 tests
+python -m pytest tests/ -v    # 197 tests
 ```
 
 ---
@@ -409,7 +409,7 @@ adelie/
 git clone https://github.com/Ade1ie/adelie.git
 cd adelie
 pip install -r requirements.txt
-python -m pytest tests/ -v   # Ensure all 183 tests pass
+python -m pytest tests/ -v   # Ensure all tests pass
 ```
 
 1. Fork → branch → implement → test → PR
