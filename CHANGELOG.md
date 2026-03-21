@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.2.2] - 2026-03-21
+
+### Added
+- **AI-Driven Main Goal**: `adelie run` without `--goal` now auto-generates a comprehensive project roadmap from `.adelie/specs/` using LLM
+- **Goal System Redesign**: Main Goal (roadmap from specs) + Sub Goal (Expert AI's per-cycle coder_tasks) architecture
+
+### Changed
+- `--goal` default removed — no more hardcoded "Operate and improve the Adelie autonomous AI system"
+- Workspace resume uses `last_goal` when no `--goal` specified
+- Orchestrator accepts `None` goal with graceful fallback
+
+### Fixed
+- Ollama Cloud URL in `.env` template corrected to `https://ollama.com`
+
+
 ## [0.2.1] - 2026-03-21
 
 ### Added

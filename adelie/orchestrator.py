@@ -57,8 +57,8 @@ class Orchestrator:
     MAX_RECOVER_RETRIES = 3
     MAX_NEW_LOGIC_CYCLES = 3  # Force transition after N cycles in new_logic
 
-    def __init__(self, goal: str = "Operate the Adelie autonomous AI system", phase: str = "initial"):
-        self.goal = goal
+    def __init__(self, goal: str | None = None, phase: str = "initial"):
+        self.goal = goal or "Autonomously develop and improve the project"
         self.phase = phase
         self.state = LoopState.NORMAL
         self.loop_iteration = 0

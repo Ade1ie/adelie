@@ -459,6 +459,129 @@ def _generate_os_context(os_info: dict) -> str:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# AUTO GOAL GENERATION
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+def _auto_generate_goal() -> str | None:
+    """
+    Auto-generate project Main Goal from spec files + project structure.
+    Uses LLM to analyze .adelie/specs/ and file tree, producing a comprehensive
+    project_goal.md that all agents reference.
+    Returns the generated goal summary, or None if no specs found.
+    """
+    import adelie.config as cfg
+    from adelie.kb import retriever
+
+    ws_root = _find_workspace_root()
+    specs_dir = ws_root / "specs"
+    goal_path = cfg.WORKSPACE_PATH / "logic" / "project_goal.md"
+
+    # If goal already exists, just return its summary
+    if goal_path.exists():
+        content = goal_path.read_text(encoding="utf-8")
+        # Extract first meaningful line as summary
+        for line in content.splitlines():
+            line = line.strip()
+            if line and not line.startswith("#") and not line.startswith("**") and not line.startswith("<!--"):
+                return line[:200]
+        return "Project goal defined (see project_goal.md)"
+
+    # Collect spec contents
+    spec_contents = ""
+    if specs_dir.exists():
+        for f in sorted(specs_dir.iterdir()):
+            if f.is_file() and not f.name.startswith(".") and f.suffix in (".md", ".txt", ".pdf", ".docx"):
+                try:
+                    text = f.read_text(encoding="utf-8")
+                    spec_contents += f"\n### {f.name}\n{text[:3000]}\n"
+                except Exception:
+                    pass
+
+    if not spec_contents.strip():
+        # No specs — no auto goal
+        return None
+
+    # Collect project structure
+    from adelie.project_context import get_tree_summary
+    file_tree = get_tree_summary()
+
+    # Also check KB for any scanner output
+    kb_summary = ""
+    try:
+        retriever.ensure_workspace()
+        kb_summary = retriever.get_index_summary()
+    except Exception:
+        pass
+
+    # LLM call to generate Main Goal
+    prompt = f"""You are analyzing a software project to create a comprehensive project roadmap.
+Your output will be used as the "Main Goal" document that guides ALL AI agents working on this project.
+
+## Spec Files (provided by user)
+{spec_contents}
+
+## Project Structure
+{file_tree}
+
+{f"## Existing Knowledge Base{chr(10)}{kb_summary}" if kb_summary else ""}
+
+Based on the above, create a structured project roadmap in markdown.
+The document should include:
+
+1. **Vision** — One paragraph summary of what this project aims to achieve
+2. **Objectives** — Numbered list of major objectives with measurable criteria
+3. **Technical Requirements** — Technologies, frameworks, architecture decisions
+4. **Milestones** — Phased delivery plan
+5. **Constraints & Notes** — Any important constraints or considerations
+
+Be thorough and specific — this document guides ALL AI agents.
+Output ONLY the markdown content, no extra commentary."""
+
+    console.print("[bold cyan]🎯 Auto-generating Main Goal from spec files...[/bold cyan]")
+
+    try:
+        from adelie.llm_client import generate
+        result = generate(
+            system_prompt="You are a project planning expert. Analyze the given specs and project structure to create a clear, actionable project roadmap.",
+            user_prompt=prompt,
+            temperature=0.3,
+        )
+
+        # Save to project_goal.md
+        goal_path.parent.mkdir(parents=True, exist_ok=True)
+        from datetime import datetime
+        header = (
+            f"<!-- auto-generated from specs at {datetime.now().isoformat(timespec='seconds')} -->\n"
+            f"<!-- regenerate with: adelie goal reset -->\n\n"
+        )
+        goal_path.write_text(header + result, encoding="utf-8")
+
+        # Update KB index
+        retriever.update_index(
+            "logic/project_goal.md",
+            tags=["goal", "project", "roadmap", "priority"],
+            summary="Auto-generated project Main Goal from spec files",
+        )
+
+        console.print("[green]  ✓ Main Goal generated → project_goal.md[/green]")
+
+        # Extract summary for display
+        first_line = ""
+        for line in result.splitlines():
+            line = line.strip()
+            if line and not line.startswith("#"):
+                first_line = line[:120]
+                break
+        return first_line or "Project goal auto-generated from specs"
+
+    except Exception as e:
+        console.print(f"[yellow]⚠️  Auto goal generation failed: {e}[/yellow]")
+        console.print("[dim]   Continuing without Main Goal — set manually with: adelie goal set \"...\"[/dim]")
+        return None
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # INIT
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -574,7 +697,7 @@ OLLAMA_BASE_URL=http://localhost:11434
 OLLAMA_MODEL=llama3.2
 
 # ── Ollama Cloud (ollama.com 클라우드 사용 시) ────────────────────────
-# OLLAMA_BASE_URL=https://api.ollama.com
+# OLLAMA_BASE_URL=https://ollama.com
 # OLLAMA_API_KEY=your-ollama-cloud-api-key
 
 # ── Fallback Chain ───────────────────────────────────────────────────
@@ -755,23 +878,31 @@ def cmd_run(args: argparse.Namespace) -> None:
 
         # Use last goal if no new goal specified
         goal = args.goal
-        if goal == "Operate and improve the Adelie autonomous AI system" and ws.get("last_goal"):
+        if not goal and ws.get("last_goal"):
             goal = ws["last_goal"]
 
         console.print(f"[bold cyan]{t('run.resuming', n=args.workspace_num)}[/bold cyan]")
         console.print(f"   [dim]{ws_path}[/dim]")
 
-        registry.update_last_used(ws_path, goal)
+        registry.update_last_used(ws_path, goal or "")
     else:
         goal = args.goal
         ws_root = _find_workspace_root()
         if ws_root.exists():
-            registry.update_last_used(str(ws_root.parent), goal)
+            registry.update_last_used(str(ws_root.parent), goal or "")
 
     _validate_provider()
 
     # Auto-sync spec files from .adelie/specs/
     _sync_specs()
+
+    # Auto-generate Main Goal if no --goal provided
+    if not goal:
+        goal_summary = _auto_generate_goal()
+        if goal_summary:
+            goal = goal_summary
+        else:
+            goal = "Autonomously develop and improve the project based on available context"
 
     # Get current phase from workspace config
     ws_config = _load_workspace_config()
@@ -1948,7 +2079,7 @@ def main() -> None:
     p_run.add_argument("workspace_num", nargs="?", type=int, default=None,
                        help="Workspace number (use with 'ws')")
     p_run.add_argument("--goal", type=str,
-                       default="Operate and improve the Adelie autonomous AI system",
+                       default=None,
                        help="High-level goal for the AI agents")
     p_run.add_argument("--once", action="store_true",
                        help="Run exactly one cycle then exit")
