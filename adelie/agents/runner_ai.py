@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import re
 import shlex
+import shutil
 import subprocess
 import sys
 from datetime import datetime
@@ -61,6 +62,29 @@ BLOCKED_CHARS = {";", "|", "&&", "||", "`", "$(", ">>", "<<"}
 EXEC_TIMEOUT_BUILD = 120
 EXEC_TIMEOUT_RUN = 10  # Short timeout — we just check if it starts
 EXEC_TIMEOUT_DEPLOY = 180
+
+
+def _detect_available_tools() -> str:
+    """Check which CLI tools are actually installed on this system."""
+    tools_to_check = [
+        "npm", "npx", "node", "yarn", "pnpm",
+        "pip", "pip3", "python", "python3",
+        "docker", "docker-compose", "podman",
+        "cargo", "go", "make",
+        "vite", "next",
+    ]
+    available = []
+    unavailable = []
+    for tool in tools_to_check:
+        if shutil.which(tool):
+            available.append(tool)
+        else:
+            unavailable.append(tool)
+
+    lines = [f"Available: {', '.join(available)}"]
+    if unavailable:
+        lines.append(f"NOT INSTALLED (do NOT use): {', '.join(unavailable)}")
+    return "\n".join(lines)
 
 
 def _diagnose_build_error(stderr: str, stdout: str = "") -> list[dict]:
@@ -397,7 +421,13 @@ def run_pipeline(
             except Exception:
                 pass
 
+    # Detect available tools on this system
+    tools_info = _detect_available_tools()
+
     user_prompt = (
+        f"## System Tools\n{tools_info}\n\n"
+        f"CRITICAL: Only generate commands using tools listed as 'Available' above.\n"
+        f"Do NOT generate commands for tools listed as 'NOT INSTALLED'.\n\n"
         f"## Project Files\n\n"
         + "\n\n".join(file_list[:20])
         + f"\n\n## Max Tier: {max_tier}\n"

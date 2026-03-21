@@ -61,7 +61,6 @@ class Orchestrator:
         self.goal = goal or "Autonomously develop and improve the project"
         self.phase = phase
         self.state = LoopState.NORMAL
-        self.loop_iteration = 0
         self.last_expert_output: dict | None = None
         self.last_error: str | None = None
         self._running = True
@@ -70,6 +69,12 @@ class Orchestrator:
         self._phase_ready_count = 0      # How many cycles the system has recommended transition
         self._phase_recommendation: str | None = None  # Recommended next phase
         self._pause_requested = False    # Controlled by interactive CLI
+
+        # Restore persisted state from config.json
+        self.loop_iteration = 0
+        self._test_pass_history: list[bool] = []
+        self._review_score_history: list[int] = []
+        self._restore_state()
 
         # Loop detection
         self._loop_detector = LoopDetector()
@@ -89,9 +94,7 @@ class Orchestrator:
         # Process supervisor for spawned commands
         self.supervisor = ProcessSupervisor(max_concurrent=5)
 
-        # Quality tracking for phase gates
-        self._test_pass_history: list[bool] = []    # last N test results
-        self._review_score_history: list[int] = []  # last N review scores
+
 
         # Graceful shutdown on Ctrl+C or SIGTERM
         signal.signal(signal.SIGINT,  self._handle_signal)
@@ -302,15 +305,37 @@ class Orchestrator:
             return rule["next"].value
         return None
 
-    def _save_phase(self) -> None:
-        """Persist current phase to .adelie/config.json."""
+    def _save_state(self) -> None:
+        """Persist current phase, loop_iteration, and quality history to .adelie/config.json."""
         config_path = WORKSPACE_PATH.parent / "config.json"
         if config_path.exists():
             cfg_data = json.loads(config_path.read_text(encoding="utf-8"))
         else:
             cfg_data = {}
         cfg_data["phase"] = self.phase
+        cfg_data["loop_iteration"] = self.loop_iteration
+        cfg_data["test_pass_history"] = self._test_pass_history[-10:]
+        cfg_data["review_score_history"] = self._review_score_history[-10:]
         config_path.write_text(json.dumps(cfg_data, indent=2, ensure_ascii=False), encoding="utf-8")
+
+    def _save_phase(self) -> None:
+        """Persist current phase (alias for _save_state for backward compat)."""
+        self._save_state()
+
+    def _restore_state(self) -> None:
+        """Restore loop_iteration and quality history from config.json."""
+        config_path = WORKSPACE_PATH.parent / "config.json"
+        if not config_path.exists():
+            return
+        try:
+            cfg_data = json.loads(config_path.read_text(encoding="utf-8"))
+            self.loop_iteration = cfg_data.get("loop_iteration", 0)
+            self._test_pass_history = cfg_data.get("test_pass_history", [])
+            self._review_score_history = cfg_data.get("review_score_history", [])
+            if self.loop_iteration > 0:
+                console.print(f"[dim]  ↻ Resumed from loop #{self.loop_iteration}[/dim]")
+        except Exception:
+            pass
 
     def _write_error_to_kb(self, error: Exception | str) -> None:
         """Directly write an error file to the KB errors/ folder."""
@@ -1377,6 +1402,9 @@ class Orchestrator:
             "iteration": self.loop_iteration,
             "state": self.state.value,
         })
+
+        # Persist state for resume after Ctrl+C
+        self._save_state()
 
     def pause(self) -> None:
         """Request the orchestrator to pause before the next cycle."""

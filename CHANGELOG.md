@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.2.3] - 2026-03-21
+
+### Added
+- **State Persistence**: `loop_iteration`, test/review history now saved to `config.json` — Ctrl+C → restart resumes from where you left off
+- **Tool Detection for Runner AI**: `shutil.which()` checks which CLI tools are actually installed; Runner AI prompt now includes available/unavailable tools list, preventing commands for missing tools (e.g., Docker)
+
+### Fixed
+- **Research AI 401 error**: `web_search.py` now includes `Authorization: Bearer` header for Ollama Cloud API calls
+
+
 ## [0.2.2] - 2026-03-21
 
 ### Added

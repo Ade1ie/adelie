@@ -21,6 +21,7 @@ from adelie.config import (
     GEMINI_API_KEY,
     GEMINI_MODEL,
     LLM_PROVIDER,
+    OLLAMA_API_KEY,
     OLLAMA_BASE_URL,
     OLLAMA_MODEL,
 )
@@ -201,8 +202,13 @@ Provide a detailed, factual answer. Note that you don't have access to
 real-time information, so state clearly when information might be outdated."""
 
     try:
+        headers = {"Content-Type": "application/json"}
+        if OLLAMA_API_KEY:
+            headers["Authorization"] = f"Bearer {OLLAMA_API_KEY}"
+
         resp = requests.post(
             url,
+            headers=headers,
             json={
                 "model": use_model,
                 "messages": [
