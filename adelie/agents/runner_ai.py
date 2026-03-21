@@ -337,10 +337,19 @@ def _cleanup_dead_processes() -> None:
         pid = proc.get("pid")
         if pid:
             try:
-                os.kill(pid, 0)
-                alive.append(proc)
+                if sys.platform == "win32":
+                    import ctypes
+                    handle = ctypes.windll.kernel32.OpenProcess(0x00100000, 0, pid)
+                    is_alive = bool(handle)
+                    if handle:
+                        ctypes.windll.kernel32.CloseHandle(handle)
+                else:
+                    os.kill(pid, 0)
+                    is_alive = True
             except (ProcessLookupError, PermissionError, OSError):
-                pass  # Dead — drop it
+                is_alive = False
+            if is_alive:
+                alive.append(proc)
     RUNNER_ROOT.mkdir(parents=True, exist_ok=True)
     PROCESS_FILE.write_text(json.dumps(alive, indent=2), encoding="utf-8")
 
@@ -354,10 +363,19 @@ def _is_similar_running(description: str) -> int | None:
             pid = proc.get("pid")
             if pid:
                 try:
-                    os.kill(pid, 0)
-                    return pid  # Still alive
+                    if sys.platform == "win32":
+                        import ctypes
+                        handle = ctypes.windll.kernel32.OpenProcess(0x00100000, 0, pid)
+                        is_alive = bool(handle)
+                        if handle:
+                            ctypes.windll.kernel32.CloseHandle(handle)
+                    else:
+                        os.kill(pid, 0)
+                        is_alive = True
                 except (ProcessLookupError, PermissionError, OSError):
-                    pass
+                    is_alive = False
+                if is_alive:
+                    return pid  # Still alive
     return None
 
 

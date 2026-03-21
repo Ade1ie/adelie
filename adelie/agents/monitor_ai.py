@@ -55,12 +55,22 @@ def _check_http(url: str, timeout: int = 5) -> dict:
 
 
 def _check_process(pid: int) -> bool:
-    """Check if a process is still running."""
+    """Check if a process is still running (cross-platform)."""
     import os
+    import sys
     try:
-        os.kill(pid, 0)
-        return True
-    except (ProcessLookupError, PermissionError):
+        if sys.platform == "win32":
+            import ctypes
+            SYNCHRONIZE = 0x00100000
+            handle = ctypes.windll.kernel32.OpenProcess(SYNCHRONIZE, 0, pid)
+            if handle:
+                ctypes.windll.kernel32.CloseHandle(handle)
+                return True
+            return False
+        else:
+            os.kill(pid, 0)
+            return True
+    except (ProcessLookupError, PermissionError, OSError):
         return False
 
 

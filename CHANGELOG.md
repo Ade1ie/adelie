@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.2.4] - 2026-03-21
+
+### Fixed
+- **Windows `[WinError 87]` in Monitor/Runner AI**: `os.kill(pid, 0)` is not supported on Windows. Replaced with `ctypes.windll.kernel32.OpenProcess` for Windows, `os.kill(pid, 0)` for Linux/macOS. Fixes crash in `monitor_ai.py` and `runner_ai.py`.
+
+
 ## [0.2.3] - 2026-03-21
 
 ### Added
