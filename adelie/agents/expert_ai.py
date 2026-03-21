@@ -88,6 +88,80 @@ def _get_recent_build_errors() -> str:
     return content[:500]  # 토큰 제한
 
 
+def _get_project_file_snapshot() -> str:
+    """
+    Scan the actual project directory and return a reality summary.
+    This gives Expert AI ground-truth about what code actually exists,
+    preventing premature EXPORT/PAUSE when no source code is present.
+    """
+    from adelie.config import PROJECT_ROOT
+
+    if not PROJECT_ROOT.exists():
+        return "Project directory not found."
+
+    SOURCE_EXTS = {".ts", ".tsx", ".js", ".jsx", ".py", ".go", ".rs", ".java", ".kt", ".swift", ".vue", ".svelte"}
+    CONFIG_EXTS = {".json", ".toml", ".yaml", ".yml", ".env", ".cfg", ".ini"}
+    SKIP_DIRS = {"node_modules", "__pycache__", ".git", ".adelie", "dist", "build", ".venv", "venv"}
+
+    source_files: list[str] = []
+    config_files: list[str] = []
+    total_lines = 0
+
+    for path in PROJECT_ROOT.rglob("*"):
+        if path.is_file():
+            # Skip hidden/build dirs
+            parts = set(path.parts)
+            if parts & SKIP_DIRS:
+                continue
+            rel = str(path.relative_to(PROJECT_ROOT))
+            if path.suffix in SOURCE_EXTS:
+                source_files.append(rel)
+                try:
+                    total_lines += len(path.read_text(encoding="utf-8", errors="ignore").splitlines())
+                except Exception:
+                    pass
+            elif path.suffix in CONFIG_EXTS:
+                config_files.append(rel)
+
+    src_count = len(source_files)
+    cfg_count = len(config_files)
+
+    # Determine deployment readiness contextually
+    if src_count == 0:
+        readiness = "❌ NO SOURCE CODE — implementation has not started"
+        advice = (
+            "IMPORTANT CONTEXT: There are no source files in the project yet. "
+            "EXPORT or PAUSE at this stage provides zero value to the user. "
+            "The highest priority is to create coder_tasks to build the actual application."
+        )
+    elif src_count < 5:
+        readiness = f"⚠️ EARLY STAGE — only {src_count} source file(s), scaffolding phase"
+        advice = (
+            "The project is in early scaffolding. "
+            "Prioritize coder_tasks to build core features before any documentation exports."
+        )
+    elif total_lines < 200:
+        readiness = f"🔶 SKELETON — {src_count} files but only {total_lines} total lines"
+        advice = "Source files exist but content is minimal. Focus on implementation over exports."
+    else:
+        readiness = f"✅ CODE EXISTS — {src_count} source file(s), {total_lines:,} lines"
+        advice = "Source code is present. Documentation and exports are appropriate."
+
+    # Show up to 10 source files
+    sample = source_files[:10]
+    sample_str = "\n  ".join(sample) if sample else "(none)"
+    if len(source_files) > 10:
+        sample_str += f"\n  ... and {len(source_files) - 10} more"
+
+    return f"""## Current Project Reality (File System Snapshot)
+Status: {readiness}
+Source files: {src_count}  |  Config files: {cfg_count}  |  Total lines: {total_lines:,}
+
+Source files found:
+  {sample_str}
+
+{advice}"""
+
 def _get_scaffolding_need() -> str:
     """
     프로젝트 진입 파일 존재 여부 검사.
@@ -346,6 +420,9 @@ Total KB files across all categories: {total_kb_files}
 
 ## ⚠️ Missing Project Entry Files (CREATE THESE FIRST)
 {_get_scaffolding_need()}
+
+{_get_project_file_snapshot()}
+
 
 ## This Cycle — Writer AI Output
 {writer_summary}

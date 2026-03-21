@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.2.6] - 2026-03-22
+
+### Added
+- **Project File Snapshot in Expert AI**: `_get_project_file_snapshot()` injects real file system state (source file count, total lines, deployment-readiness) into Expert AI's prompt every cycle. Expert now naturally avoids EXPORT/PAUSE when no source code exists.
+- **Writer AI Scope Guidance**: `_get_project_file_snapshot_for_writer()` prevents Writer from writing deployment/security docs when no source code exists yet.
+
+### Fixed
+- **MID_2 Phase Directive**: Expert AI now explicitly checks source file count before choosing EXPORT — if source_files=0, treats MID_2 as MID and prioritizes coder_tasks.
+- **Phase Transition Criteria**: INITIAL→MID now requires at least one coder_task issued. MID_2→LATE now requires source code to exist (>5 files).
+
+
 ## [0.2.5] - 2026-03-22
 
 ### Fixed

@@ -15,7 +15,7 @@ from pathlib import Path
 
 from rich.console import Console
 
-from adelie.config import WORKSPACE_PATH, KB_CATEGORIES
+from adelie.config import WORKSPACE_PATH, KB_CATEGORIES, PROJECT_ROOT
 from adelie.context_compactor import (
     compact_system_state,
     compact_expert_output,
@@ -26,6 +26,45 @@ from adelie.llm_client import generate
 from adelie.phases import get_phase_prompt
 
 console = Console()
+
+
+def _get_project_file_snapshot_for_writer() -> str:
+    """
+    Provide Writer AI with scope guidance based on actual project files.
+    Prevents writing deployment/security docs before code exists.
+    """
+    if not PROJECT_ROOT.exists():
+        return ""
+
+    SOURCE_EXTS = {".ts", ".tsx", ".js", ".jsx", ".py", ".go", ".rs", ".java", ".kt", ".vue", ".svelte"}
+    SKIP_DIRS = {"node_modules", "__pycache__", ".git", ".adelie", "dist", "build", ".venv", "venv"}
+
+    source_files = [
+        p for p in PROJECT_ROOT.rglob("*")
+        if p.is_file()
+        and p.suffix in SOURCE_EXTS
+        and not (set(p.parts) & SKIP_DIRS)
+    ]
+    src_count = len(source_files)
+
+    if src_count == 0:
+        return (
+            "⚠️ WRITER SCOPE: No source code exists yet in this project.\n"
+            "- DO NOT write deployment guides, security audits, or CI/CD pipelines.\n"
+            "  Those are premature when there is no code to deploy.\n"
+            "- Instead write: architecture plans, tech stack decisions, implementation\n"
+            "  roadmaps, and component design documents.\n"
+            "- Spec files describe FUTURE goals, not current reality."
+        )
+    elif src_count < 5:
+        return (
+            f"⚠️ WRITER SCOPE: Only {src_count} source file(s) exist (early scaffolding).\n"
+            "- Focus on implementation guides, coding patterns, and API specs.\n"
+            "- Deployment/security docs are premature at this stage.\n"
+            "- Prioritize writing content that helps the Coder AI build features."
+        )
+    else:
+        return f"✅ WRITER SCOPE: {src_count} source files found — all documentation types are appropriate."
 
 
 def _list_existing_files() -> str:
@@ -139,6 +178,9 @@ def run(
 - Only update existing files if there is genuinely new information to add.
 - Focus on creating files that cover DIFFERENT topics than what already exists.
 - If the KB already has planning docs, create implementation/technical docs instead.
+
+## SCOPE GUIDANCE — Read Before Writing
+{_get_project_file_snapshot_for_writer()}
 
 Based on the above context, what knowledge files should be created or updated?
 Do NOT recreate files with roughly the same content as existing ones.

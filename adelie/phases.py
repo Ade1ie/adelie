@@ -57,7 +57,7 @@ Your decision criteria in this phase:
 - Check if these KB files exist: project_vision, architecture, roadmap
 - If any are missing, request them via kb_updates_needed""",
 
-        "transition_criteria": "Transition to MID when: roadmap.md exists, architecture is documented, and at least 5 KB files exist.",
+        "transition_criteria": "Transition to MID when: roadmap.md exists, architecture is documented, at least 5 KB files exist, AND at least one coder_task has been issued (even scaffolding).",
     },
 
     Phase.MID: {
@@ -160,13 +160,18 @@ Priority files:
         "expert_directive": """PHASE: MID_2 (중기 2기)
 Your decision criteria in this phase:
 - Prioritize STABILITY and OPTIMIZATION
-- Request deployment documentation
-- Check that security and performance are addressed
-- Use EXPORT for deployment-ready artifacts
-- Focus on business viability documentation
-- Suggest PAUSE for careful review before major deployments""",
+- CRITICAL: Check the 'Current Project Reality' section for actual file counts.
+  * If source_files = 0: treat this as MID phase — create coder_tasks to build the app.
+    EXPORT and PAUSE when no code exists is meaningless.
+  * If source_files < 5: prioritize coder_tasks to complete core implementation first.
+  * If source_files >= 5 and total_lines > 500: then documentation/deployment exports are appropriate.
+- Request deployment documentation only AFTER code exists
+- Check that security and performance are addressed in the codebase
+- Use EXPORT for deployment-ready artifacts — only when the project actually has code
+- Focus on business viability documentation only after implementation is underway
+- Suggest PAUSE for careful review before major deployments (not before code exists)""",
 
-        "transition_criteria": "Transition to LATE when: deployed, stable, monetization strategy documented.",
+        "transition_criteria": "Transition to LATE when: source code exists (>5 files), deployed, stable, monetization strategy documented.",
     },
 
     Phase.LATE: {
