@@ -3,6 +3,12 @@ adelie/dashboard_html.py
 
 Embedded HTML/CSS/JS template for the Adelie real-time web dashboard.
 Served as a single self-contained page — no external assets needed.
+
+Performance-optimized:
+  - requestAnimationFrame DOM batching
+  - DocumentFragment for bulk log insertion
+  - Event throttling for rapid agent updates
+  - Phase timeline class-toggle (no full re-render)
 """
 
 DASHBOARD_HTML = r"""<!DOCTYPE html>
@@ -49,8 +55,8 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--f
 /* ── Agent Grid ─────────────────────── */
 .section-title{font-size:13px;font-weight:600;color:var(--fg2);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px}
 .agents-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-bottom:16px}
-.agent-card{background:var(--glass);border:1px solid var(--border);border-radius:10px;padding:14px;transition:all .3s ease;position:relative;overflow:hidden}
-.agent-card:hover{border-color:var(--fg3);transform:translateY(-1px)}
+.agent-card{background:var(--glass);border:1px solid var(--border);border-radius:10px;padding:14px;transition:border-color .3s ease,box-shadow .3s ease;position:relative;overflow:hidden;contain:layout style}
+.agent-card:hover{border-color:var(--fg3)}
 .agent-card.running{border-color:var(--cyan);box-shadow:0 0 20px rgba(88,166,255,.1)}
 .agent-card.running::before{content:'';position:absolute;top:0;left:-100%;width:100%;height:2px;background:linear-gradient(90deg,transparent,var(--cyan),transparent);animation:scan 2s linear infinite}
 @keyframes scan{to{left:100%}}
@@ -128,7 +134,7 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--f
     <svg viewBox="0 0 32 32" fill="none"><circle cx="16" cy="12" r="10" fill="#58a6ff" opacity=".15" stroke="#58a6ff" stroke-width="1.5"/><circle cx="13" cy="10" r="1.5" fill="#e6edf3"/><circle cx="19" cy="10" r="1.5" fill="#e6edf3"/><ellipse cx="16" cy="14" rx="3" ry="2" fill="#f0883e"/><path d="M10 20 C10 26 22 26 22 20" stroke="#58a6ff" stroke-width="1.5" fill="none"/><path d="M6 14 C4 18 8 22 10 20" stroke="#58a6ff" stroke-width="1.5" fill="none"/><path d="M26 14 C28 18 24 22 22 20" stroke="#58a6ff" stroke-width="1.5" fill="none"/></svg>
     Adelie Dashboard
   </div>
-  <span class="version" id="version">v0.1.5</span>
+  <span class="version" id="version">v0.2.0</span>
   <div class="spacer"></div>
   <div class="status-dot" id="statusDot"></div>
   <span class="status-label" id="statusLabel">Connected</span>
@@ -199,7 +205,6 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--f
 
   // ── Agents ──────────────────────────
   const AGENTS = ["Writer","Expert","Scanner","Coder","Reviewer","Tester","Runner","Monitor","Analyst","Research"];
-  const AGENT_COLORS = {Writer:"#58a6ff",Expert:"#58a6ff",Scanner:"#bc8cff",Coder:"#3fb950","Coder:0":"#3fb950","Coder:1":"#3fb950","Coder:2":"#3fb950",Reviewer:"#d29922",Tester:"#f85149",Runner:"#3fb950",Monitor:"#58a6ff",Analyst:"#bc8cff",Inform:"#58a6ff",Research:"#d29922"};
 
   // ── Phases ──────────────────────────
   const PHASES = [
@@ -213,7 +218,7 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--f
 
   // ── State ───────────────────────────
   let state = {agents:{},cycle:0,phase:"initial",goal:"",workspace:"",metrics:{}};
-  let logs = [];
+  let logCount = 0;
   const MAX_LOGS = 300;
   let autoScroll = true;
 
@@ -221,11 +226,33 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--f
   const $ = id => document.getElementById(id);
   const agentsGrid = $("agentsGrid");
   const logBody = $("logBody");
-  const logCount = $("logCount");
+  const logCountEl = $("logCount");
+
+  // ── RAF Batch Queue ─────────────────
+  // All DOM mutations are queued and applied in a single rAF frame
+  let pendingUpdates = [];
+  let rafScheduled = false;
+
+  function scheduleUpdate(fn) {
+    pendingUpdates.push(fn);
+    if (!rafScheduled) {
+      rafScheduled = true;
+      requestAnimationFrame(flushUpdates);
+    }
+  }
+
+  function flushUpdates() {
+    const updates = pendingUpdates;
+    pendingUpdates = [];
+    rafScheduled = false;
+    for (let i = 0; i < updates.length; i++) {
+      updates[i]();
+    }
+  }
 
   // ── Init agents grid ────────────────
   function initAgents(){
-    agentsGrid.innerHTML = "";
+    const frag = document.createDocumentFragment();
     AGENTS.forEach(name => {
       const card = document.createElement("div");
       card.className = "agent-card";
@@ -234,79 +261,157 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--f
         <div class="agent-name"><span class="dot idle" id="dot-${name}"></span>${name}</div>
         <div class="agent-detail" id="detail-${name}">idle</div>
         <div class="agent-elapsed" id="elapsed-${name}"></div>`;
-      agentsGrid.appendChild(card);
+      frag.appendChild(card);
+    });
+    agentsGrid.appendChild(frag);
+  }
+
+  // ── Update agent card (throttled) ──
+  const agentThrottleMap = {};
+  const AGENT_THROTTLE_MS = 80;
+
+  function updateAgent(name, info){
+    const now = performance.now();
+    const lastUpdate = agentThrottleMap[name] || 0;
+    const prevState = agentThrottleMap[name + "_state"];
+    const curState = info.state || "idle";
+
+    // Skip if same state and within throttle window
+    if (curState === prevState && (now - lastUpdate) < AGENT_THROTTLE_MS) {
+      return;
+    }
+    agentThrottleMap[name] = now;
+    agentThrottleMap[name + "_state"] = curState;
+
+    scheduleUpdate(() => {
+      const card = $("agent-"+name);
+      if(!card) return;
+      const dot = $("dot-"+name);
+      const detail = $("detail-"+name);
+      const elapsed = $("elapsed-"+name);
+      const st = info.state || "idle";
+      card.className = "agent-card " + st;
+      dot.className = "dot " + st;
+      detail.textContent = info.detail || st;
+      if(info.elapsed > 0) elapsed.textContent = info.elapsed.toFixed(1)+"s";
+      else elapsed.textContent = st === "running" ? "…" : "";
     });
   }
 
-  // ── Update agent card ───────────────
-  function updateAgent(name, info){
-    const card = $("agent-"+name);
-    if(!card) return;
-    const dot = $("dot-"+name);
-    const detail = $("detail-"+name);
-    const elapsed = $("elapsed-"+name);
-    const st = info.state || "idle";
-    card.className = "agent-card " + st;
-    dot.className = "dot " + st;
-    detail.textContent = info.detail || st;
-    if(info.elapsed > 0) elapsed.textContent = info.elapsed.toFixed(1)+"s";
-    else elapsed.textContent = st === "running" ? "…" : "";
-  }
-
-  // ── Update phase timeline ──────────
-  function updatePhase(current){
+  // ── Init phase timeline (once) ─────
+  let phaseElements = [];
+  function initPhaseTimeline() {
     const tl = $("phaseTimeline");
-    tl.innerHTML = "";
-    let found = false;
-    PHASES.forEach(p => {
+    const frag = document.createDocumentFragment();
+    PHASES.forEach((p, i) => {
       const item = document.createElement("div");
       item.className = "phase-item";
-      if(p.value === current){ item.classList.add("active"); found = true; }
-      else if(!found){ item.classList.add("completed"); }
+      item.dataset.phase = p.value;
       item.innerHTML = `<span class="phase-name">${p.label}</span>`;
-      tl.appendChild(item);
+      frag.appendChild(item);
+      phaseElements.push(item);
     });
-    $("phaseBadge").textContent = (PHASES.find(p=>p.value===current)||{}).label || current;
+    tl.appendChild(frag);
+  }
+
+  // ── Update phase timeline (class toggle only) ──
+  let currentPhase = "";
+  function updatePhase(current){
+    if (current === currentPhase) return;
+    currentPhase = current;
+
+    scheduleUpdate(() => {
+      let found = false;
+      for (let i = 0; i < phaseElements.length; i++) {
+        const el = phaseElements[i];
+        el.classList.remove("active", "completed");
+        if (el.dataset.phase === current) {
+          el.classList.add("active");
+          found = true;
+        } else if (!found) {
+          el.classList.add("completed");
+        }
+      }
+      $("phaseBadge").textContent = (PHASES.find(p=>p.value===current)||{}).label || current;
+    });
   }
 
   // ── Update metrics panel ───────────
   function updateMetrics(m){
     if(!m) return;
-    $("mTokens").textContent = (m.total_tokens||0).toLocaleString();
-    $("mCalls").textContent = m.llm_calls || m.calls || 0;
-    $("mFiles").textContent = m.files_written || 0;
-    $("mTime").textContent = (m.cycle_time||0).toFixed(1)+"s";
-    if(m.tests_total > 0) $("mTests").textContent = m.tests_passed+"/"+m.tests_total;
-    if(m.review_score > 0) $("mReview").textContent = m.review_score.toFixed(0)+"/10";
+    scheduleUpdate(() => {
+      $("mTokens").textContent = (m.total_tokens||0).toLocaleString();
+      $("mCalls").textContent = m.llm_calls || m.calls || 0;
+      $("mFiles").textContent = m.files_written || 0;
+      $("mTime").textContent = (m.cycle_time||0).toFixed(1)+"s";
+      if(m.tests_total > 0) $("mTests").textContent = m.tests_passed+"/"+m.tests_total;
+      if(m.review_score > 0) $("mReview").textContent = m.review_score.toFixed(0)+"/10";
+    });
   }
 
   // ── Update cycle chart ─────────────
   function updateChart(history){
-    const bars = $("chartBars");
-    if(!history||!history.length){ bars.innerHTML="<span style='color:var(--fg3);font-size:11px'>No data yet</span>"; return; }
-    const maxTime = Math.max(...history.map(h=>h.cycle_time||1), 1);
-    bars.innerHTML = "";
-    history.slice(-30).forEach(h => {
-      const pct = Math.max(5, ((h.cycle_time||0)/maxTime)*100);
-      const bar = document.createElement("div");
-      bar.className = "chart-bar";
-      bar.style.height = pct+"%";
-      bar.innerHTML = `<div class="tooltip">#${h.cycle} · ${(h.cycle_time||0).toFixed(1)}s · ${((h.tokens||{}).total||0).toLocaleString()} tok</div>`;
-      bars.appendChild(bar);
+    scheduleUpdate(() => {
+      const bars = $("chartBars");
+      if(!history||!history.length){ bars.innerHTML="<span style='color:var(--fg3);font-size:11px'>No data yet</span>"; return; }
+      const slice = history.slice(-30);
+      const maxTime = Math.max(...slice.map(h=>h.cycle_time||1), 1);
+      const frag = document.createDocumentFragment();
+      slice.forEach(h => {
+        const pct = Math.max(5, ((h.cycle_time||0)/maxTime)*100);
+        const bar = document.createElement("div");
+        bar.className = "chart-bar";
+        bar.style.height = pct+"%";
+        bar.innerHTML = `<div class="tooltip">#${h.cycle} · ${(h.cycle_time||0).toFixed(1)}s · ${((h.tokens||{}).total||0).toLocaleString()} tok</div>`;
+        frag.appendChild(bar);
+      });
+      bars.innerHTML = "";
+      bars.appendChild(frag);
     });
   }
 
-  // ── Add log entry ──────────────────
+  // ── Add log entries (batched) ──────
   const CAT_ICONS = {agent_start:"▶",agent_end:"✓",error:"✕",warning:"⚠",phase_change:"◆",info:"·",debug:"·",cycle_header:"─",cycle_summary:"📊",progress:"→"};
+  let pendingLogs = [];
+  let logRafScheduled = false;
+
   function addLog(entry){
-    logs.push(entry);
-    if(logs.length > MAX_LOGS){ logs.shift(); logBody.removeChild(logBody.firstChild); }
-    const div = document.createElement("div");
-    div.className = "log-entry " + (entry.category||"info");
-    const ts = entry.timestamp ? new Date(entry.timestamp).toLocaleTimeString() : "";
-    div.innerHTML = `<span class="log-ts">${ts}</span><span class="log-cat">${CAT_ICONS[entry.category]||"·"}</span><span class="log-msg">${escHtml(entry.message||"")}</span>`;
-    logBody.appendChild(div);
-    logCount.textContent = logs.length + " entries";
+    pendingLogs.push(entry);
+    logCount++;
+    if (!logRafScheduled) {
+      logRafScheduled = true;
+      requestAnimationFrame(flushLogs);
+    }
+  }
+
+  function flushLogs() {
+    logRafScheduled = false;
+    const entries = pendingLogs;
+    pendingLogs = [];
+    if (!entries.length) return;
+
+    // Trim excess before adding
+    const totalAfter = logBody.childElementCount + entries.length;
+    if (totalAfter > MAX_LOGS) {
+      const toRemove = totalAfter - MAX_LOGS;
+      for (let i = 0; i < toRemove && logBody.firstChild; i++) {
+        logBody.removeChild(logBody.firstChild);
+      }
+    }
+
+    // Build all new entries in a DocumentFragment
+    const frag = document.createDocumentFragment();
+    for (let i = 0; i < entries.length; i++) {
+      const entry = entries[i];
+      const div = document.createElement("div");
+      div.className = "log-entry " + (entry.category||"info");
+      const ts = entry.timestamp ? new Date(entry.timestamp).toLocaleTimeString() : "";
+      div.innerHTML = `<span class="log-ts">${ts}</span><span class="log-cat">${CAT_ICONS[entry.category]||"·"}</span><span class="log-msg">${escHtml(entry.message||"")}</span>`;
+      frag.appendChild(div);
+    }
+    logBody.appendChild(frag);
+
+    logCountEl.textContent = Math.min(logCount, MAX_LOGS) + " entries";
     if(autoScroll) logBody.scrollTop = logBody.scrollHeight;
   }
 
@@ -316,7 +421,7 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--f
   logBody.addEventListener("scroll", () => {
     const gap = logBody.scrollHeight - logBody.scrollTop - logBody.clientHeight;
     autoScroll = gap < 40;
-  });
+  }, {passive: true});
 
   // ── Load initial state ──────────────
   async function loadState(){
@@ -354,9 +459,18 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--f
   // ── SSE Connection ─────────────────
   let evtSource = null;
   let reconnectDelay = 1000;
+  let reconnectTimer = null;
 
   function connectSSE(){
-    if(evtSource) evtSource.close();
+    if(evtSource){
+      evtSource.close();
+      evtSource = null;
+    }
+    if(reconnectTimer){
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    }
+
     evtSource = new EventSource("/events");
 
     evtSource.onopen = () => {
@@ -368,9 +482,9 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--f
 
     evtSource.addEventListener("state", (e) => {
       const d = JSON.parse(e.data);
-      if(d.cycle) $("cycleNum").textContent = "#"+d.cycle;
+      if(d.cycle) scheduleUpdate(() => { $("cycleNum").textContent = "#"+d.cycle; });
       if(d.phase) updatePhase(d.phase);
-      if(d.goal) $("goal").textContent = d.goal;
+      if(d.goal) scheduleUpdate(() => { $("goal").textContent = d.goal; });
     });
 
     evtSource.addEventListener("agent", (e) => {
@@ -390,7 +504,9 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--f
 
     evtSource.addEventListener("cycle_start", (e) => {
       const d = JSON.parse(e.data);
-      $("cycleNum").textContent = "#"+(d.iteration||0);
+      scheduleUpdate(() => {
+        $("cycleNum").textContent = "#"+(d.iteration||0);
+      });
       // Reset agents
       AGENTS.forEach(name => updateAgent(name, {state:"idle",detail:"idle",elapsed:0}));
     });
@@ -406,21 +522,20 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--f
       $("statusDot").style.background = "var(--red)";
       $("statusLabel").textContent = "Disconnected";
       evtSource.close();
-      setTimeout(connectSSE, reconnectDelay);
-      reconnectDelay = Math.min(reconnectDelay * 2, 10000);
+      evtSource = null;
+      reconnectTimer = setTimeout(connectSSE, reconnectDelay);
+      reconnectDelay = Math.min(reconnectDelay * 1.5, 15000);
     };
   }
 
   // ── Init ────────────────────────────
   initAgents();
+  initPhaseTimeline();
   loadState().then(()=>{
     loadLogs();
     loadHistory();
     connectSSE();
   });
-
-  // Refresh history every 30s
-  setInterval(loadHistory, 30000);
 })();
 </script>
 </body>

@@ -1,254 +1,312 @@
 <p align="center">
-  <img src="docs/adelie_logo.jpeg" alt="Adelie Logo" width="200" />
+  <img src="docs/adelie_logo.jpeg" alt="Adelie" width="180" />
 </p>
 
 <h1 align="center">Adelie</h1>
 
 <p align="center">
-  <strong>Self-Communicating Autonomous AI Loop System</strong><br/>
-  An AI orchestrator that plans, codes, reviews, tests, deploys, and evolves — autonomously.
+  <strong>Autonomous AI Orchestration System</strong><br/>
+  <sub>10 specialized agents · 6-phase lifecycle · zero human intervention</sub>
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/python-3.10+-blue?style=for-the-badge&logo=python&logoColor=white" alt="Python 3.10+" />
-  <img src="https://img.shields.io/badge/LLM-Gemini%20%7C%20Ollama-orange?style=for-the-badge" alt="LLM Support" />
-  <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="MIT License" />
-  <img src="https://img.shields.io/badge/tests-183%20passed-brightgreen?style=for-the-badge" alt="Tests" />
+  <a href="https://www.npmjs.com/package/adelie-ai"><img src="https://img.shields.io/npm/v/adelie-ai?style=flat-square&logo=npm&color=CB3837" alt="npm version" /></a>
+  <img src="https://img.shields.io/badge/python-3.10+-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python" />
+  <img src="https://img.shields.io/badge/LLM-Gemini%20│%20Ollama-FF6F00?style=flat-square" alt="LLM" />
+  <img src="https://img.shields.io/badge/tests-183%20passing-2EA043?style=flat-square" alt="Tests" />
+  <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="License" /></a>
 </p>
 
 <p align="center">
-  <a href="#-quick-start">Quick Start</a> ·
-  <a href="#-architecture">Architecture</a> ·
-  <a href="#-features">Features</a> ·
-  <a href="#-cli-reference">CLI</a> ·
-  <a href="#-testing">Testing</a> ·
-  <a href="#-license">License</a>
+  <a href="#quick-start">Quick Start</a>&ensp;·&ensp;
+  <a href="#how-it-works">How It Works</a>&ensp;·&ensp;
+  <a href="#architecture">Architecture</a>&ensp;·&ensp;
+  <a href="#cli">CLI</a>&ensp;·&ensp;
+  <a href="#dashboard">Dashboard</a>&ensp;·&ensp;
+  <a href="#configuration">Configuration</a>
 </p>
 
 ---
 
-## 🤔 What is Adelie?
+## Overview
 
-Adelie is an **autonomous AI loop system** that orchestrates 10 specialized AI agents to build, maintain, and evolve software projects — with minimal human intervention.
-
-Think of it as a full AI development team running 24/7:
+Adelie is an autonomous AI orchestrator that plans, codes, reviews, tests, deploys, and evolves software projects through a coordinated multi-agent loop. It ships as a single CLI (`npm install -g adelie-ai`) and requires only an LLM provider — no cloud backend, no account.
 
 ```
- 🧠 Expert AI    →  Strategic decisions & task dispatch
- ✍️  Writer AI    →  Knowledge Base documentation
- 💻 Coder AI     →  Code generation (3-layer architecture)
- 🔍 Reviewer AI  →  Code quality review & feedback
- 🧪 Tester AI    →  Test execution & failure reporting
- 🚀 Runner AI    →  Build & deployment
- 📡 Monitor AI   →  System health monitoring
- 📊 Analyst AI   →  Project insights & analysis
- 🔎 Research AI  →  Web search for external info
- 🔬 Scanner AI   →  Codebase scanning on first run
+    (o_    Adelie v0.2.0
+    //\    ollama · deepseek-v3.1:671b-cloud
+    V_/_   Phase: mid_2
 ```
 
-All agents communicate through a **file-based Knowledge Base** and are coordinated by the **Orchestrator** — an endless loop with a built-in state machine.
+**What Adelie does in every cycle:**
+
+1. **Writer** curates the Knowledge Base
+2. **Expert** makes strategic decisions — what to build next, what to fix
+3. **Research** gathers external context from the web
+4. **Coder** generates code in 3 dependency layers
+5. **Reviewer** scores code quality; rejects until standards are met
+6. **Checkpoint** snapshots the project before promotion
+7. **Tester** runs tests and reports failures
+8. **Runner** builds, installs, deploys
+9. **Monitor** watches system health
+10. **Phase gates** decide when to advance the project lifecycle
+
+The loop runs continuously at a configurable interval (default 30 s), or once with `adelie run once`.
 
 ---
 
-## ✨ Features
-
-### 🎯 Core
-
-- **10 Specialized Agents** — Each with a focused role, scheduled independently
-- **6-Phase Project Lifecycle** — `INITIAL → MID → MID_1 → MID_2 → LATE → EVOLVE`
-- **Layered Code Generation** — Layer 0 (features) → Layer 1 (connectors) → Layer 2 (infra)
-- **Knowledge Base** — Tag-based & semantic retrieval across 6 categories
-- **Multi-LLM** — Gemini + Ollama with automatic fallback chains
-
-### 🛡️ Safety
-
-- **Loop Detector** — 5 stuck-pattern types with escalating interventions
-- **Phase Gates** — Quality-metric thresholds (KB count, test rate, review scores)
-- **Context Budget** — Per-agent token limits prevent unbounded growth
-- **Process Supervisor** — Timeout enforcement, orphan cleanup, concurrency limits
-
-### 🔌 Extensibility (New in Phase 2-3)
-
-| Feature | Description |
-|---------|-------------|
-| 💾 **Checkpoint System** | Auto-snapshot before file promotion, instant rollback |
-| 🐳 **Docker Sandboxing** | Configurable workspace access, network isolation, security blocklist |
-| 🌐 **REST Gateway** | HTTP API: `/api/status`, `/api/tools`, `/api/control` |
-| 🧩 **Skill Registry** | Install/update/uninstall skills from Git or local dirs |
-| 📡 **Multichannel** | `ChannelProvider` ABC — Discord, Slack, and custom channels |
-| 🤝 **A2A Protocol** | Agent-to-Agent HTTP API for external agent integration |
-| 🔧 **MCP Support** | Model Context Protocol for external tool ecosystems |
-
----
-
-## 🏗️ Architecture
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                        ORCHESTRATOR                              │
-│                                                                  │
-│   ┌──────────┐    ┌──────────┐    ┌──────────────┐              │
-│   │ Writer AI│───>│Expert AI │───>│ Coder Manager│              │
-│   └──────────┘    └──────────┘    └──────┬───────┘              │
-│        │               │                 │                       │
-│        v               │          ┌──────┴──────┐               │
-│   ┌──────────┐         │          │  Layer 0-2  │               │
-│   │Knowledge │         │          │   Coders    │               │
-│   │   Base   │<────────┘          └──────┬──────┘               │
-│   └──────────┘                           │                       │
-│                                          v                       │
-│   ┌──────────┐  ┌──────────┐  ┌──────────────────┐             │
-│   │ Reviewer │  │ Tester   │  │ Runner / Monitor │             │
-│   │    AI    │  │    AI    │  │       AI         │             │
-│   └──────────┘  └──────────┘  └──────────────────┘             │
-│                                                                  │
-│   ┌─────────────────────────────────────────────────────────┐   │
-│   │ Loop Detector │ Scheduler │ Process Supervisor          │   │
-│   ├─────────────────────────────────────────────────────────┤   │
-│   │ Checkpoint    │ Sandbox   │ Gateway │ A2A │ Channels    │   │
-│   └─────────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────────┘
-```
-
----
-
-## 🔄 Project Lifecycle
-
-Adelie evolves your project through **6 phases**, each gated by quality metrics:
-
-```
-INITIAL ──> MID ──> MID_1 ──> MID_2 ──> LATE ──> EVOLVE
-Planning    Code    Test      Optimize  Maintain  Autonomous
-```
-
-| Phase | Focus | Coder Layers |
-|-------|-------|-------------|
-| Initial | Documentation, architecture, roadmap | — |
-| Mid | Implementation, feature coding | Layer 0 |
-| Mid-1 | Integration, testing | Layer 0-1 |
-| Mid-2 | Stabilization, optimization | Layer 0-2 |
-| Late | Maintenance, new features | All |
-| Evolve | Self-improvement | All |
-
----
-
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
 
-- **Python 3.10+**
-- **Node.js 16+** (for CLI wrapper)
-- **Gemini API key** or **Ollama** running locally
+| Requirement | Version |
+|:--|:--|
+| Python | 3.10+ |
+| Node.js | 16+ |
+| LLM | Gemini API key **or** Ollama instance |
 
-### Installation
+### Install
+
+#### npm (recommended)
 
 ```bash
-# Install via npm (recommended)
 npm install -g adelie-ai
-
-# Or install from source
-git clone https://github.com/kimhyunbin/Adelie.git
-cd Adelie
-pip install -r requirements.txt
-npm install -g .
 ```
 
-### Setup
+#### curl (macOS / Linux)
 
 ```bash
-# Initialize workspace
-cd /path/to/your/project
+curl -fsSL https://raw.githubusercontent.com/Ade1ie/adelie/main/install.sh | bash
+```
+
+#### PowerShell (Windows)
+
+```powershell
+irm https://raw.githubusercontent.com/Ade1ie/adelie/main/install.ps1 | iex
+```
+
+#### Homebrew (macOS / Linux)
+
+```bash
+brew tap Ade1ie/tap
+brew install adelie
+```
+
+#### From source
+
+```bash
+git clone https://github.com/Ade1ie/adelie.git
+cd adelie
+pip install -r requirements.txt
+python adelie/cli.py --version
+```
+
+### Update
+
+```bash
+# npm
+npm install -g adelie-ai@latest
+
+# curl / PowerShell — re-run the install command above
+
+# Homebrew
+brew upgrade adelie
+
+# Check current version
+adelie --version
+```
+
+### Configure
+
+```bash
+cd your-project/
 adelie init
 
-# Configure LLM provider
-adelie config --provider gemini --api-key YOUR_GEMINI_API_KEY
+# Gemini
+adelie config --provider gemini --api-key YOUR_KEY
 
-# Or use Ollama (local, free)
+# or Ollama (local, free)
 adelie config --provider ollama --model gemma3:12b
 ```
 
 ### Run
 
 ```bash
-# Start the autonomous AI loop
+# Continuous autonomous loop
 adelie run --goal "Build a REST API for task management"
 
 # Single cycle
 adelie run once --goal "Analyze and document the codebase"
 ```
 
----
-
-## 💻 CLI Reference
-
-```
-Workspace
-  adelie init [dir]              Initialize workspace
-  adelie ws                      List all workspaces
-  adelie ws remove <N>           Remove workspace #N
-
-Run
-  adelie run --goal "..."        Start AI loop
-  adelie run ws <N>              Resume loop in workspace #N
-  adelie run once --goal "..."   Run one cycle
-
-Configuration
-  adelie config                  Show current config
-  adelie config --provider ...   Switch LLM (gemini/ollama)
-  adelie config --model ...      Set model name
-  adelie config --interval N     Loop interval (seconds)
-  adelie config --api-key KEY    Set Gemini API key
-  adelie config --lang ko|en     Display language
-
-Monitoring
-  adelie status                  System health
-  adelie inform                  Project status report
-  adelie phase                   Show phase
-  adelie phase set <phase>       Set phase manually
-  adelie metrics                 Cycle metrics
-
-Knowledge Base
-  adelie kb                      KB file counts
-  adelie kb --clear-errors       Clear error files
-  adelie kb --reset              Reset KB (destructive)
-
-Project
-  adelie goal                    Show project goal
-  adelie goal set "..."          Set project goal
-  adelie feedback "message"      Send feedback to AI loop
-  adelie research "topic"        Web search → KB
-  adelie git                     Git status & recent commits
-
-Ollama
-  adelie ollama list             List models
-  adelie ollama pull <model>     Download model
-  adelie ollama run [model]      Interactive chat
-
-Telegram
-  adelie telegram setup          Setup bot token
-  adelie telegram start          Start Telegram bot
-```
+The real-time **dashboard** opens automatically at **http://localhost:5042**.
 
 ---
 
-## 🔧 Configuration
+## How It Works
 
-### Environment Variables
+### Agents
 
-All settings stored in `.adelie/.env`:
+| Agent | Role | When |
+|:--|:--|:--|
+| **Writer** | Curates Knowledge Base — skills, logic, dependencies, exports | Every cycle |
+| **Expert** | Strategic JSON decisions — action + coder tasks + phase vote | Every cycle |
+| **Scanner** | Scans existing codebase on first run | Once |
+| **Coder** | Multi-layer code generation with dependency ordering | On demand |
+| **Reviewer** | Quality review (1–10 score) with retry-on-reject | After coding |
+| **Tester** | Executes tests, collects failures, feeds back to coder | After review |
+| **Runner** | Installs deps, builds, deploys (whitelisted commands) | Mid-phase + |
+| **Monitor** | System health, resource checks, service restarts | Periodic |
+| **Analyst** | Trend analysis, insights, KB synthesis | Periodic |
+| **Research** | Web search → KB for external knowledge | On demand |
+
+### 6-Phase Lifecycle
+
+<p align="center">
+  <img src="docs/lifecycle.png" alt="Adelie 6-Phase Lifecycle" width="800" />
+</p>
+
+Each phase transition is gated by quality metrics — KB file count, test pass rate, review scores, stability indicators. The Expert AI votes on phase transitions; the system enforces the gates.
+
+### Layered Code Generation
+
+The Coder Manager dispatches tasks across three dependency layers:
+
+- **Layer 0** — Features and pages (parallel execution)
+- **Layer 1** — Connectors and integrations (depends on Layer 0)
+- **Layer 2** — Infrastructure and configuration (depends on Layer 1)
+
+Failed layers trigger targeted retries with reviewer feedback.
+
+---
+
+## Architecture
+
+<p align="center">
+  <img src="docs/architecture.png" alt="Adelie Architecture" width="800" />
+</p>
+
+---
+
+## Dashboard
+
+Adelie serves a real-time monitoring UI at **`http://localhost:5042`** (auto-starts with `adelie run`).
+
+- **Agent grid** — live status of all 10 agents (idle / running / done / error)
+- **Log stream** — real-time SSE-powered log feed with category filtering
+- **Cycle metrics** — tokens, LLM calls, files written, test results, review scores
+- **Phase timeline** — visual progress through the 6-phase lifecycle
+- **Cycle history chart** — last 30 cycles at a glance
+
+Built with zero external dependencies — Python `http.server` + SSE + embedded HTML/JS.
+
+| Setting | Default | Env var |
+|:--|:--|:--|
+| Enable | `true` | `DASHBOARD_ENABLED` |
+| Port | `5042` | `DASHBOARD_PORT` |
+
+---
+
+## CLI
+
+```bash
+adelie --version                  # Show version
+adelie help                       # Full command reference
+```
+
+### Workspace
+
+```bash
+adelie init [dir]                 # Initialize .adelie workspace
+adelie ws                         # List all workspaces
+adelie ws remove <N>              # Remove workspace
+```
+
+### Execution
+
+```bash
+adelie run --goal "…"             # Start continuous loop
+adelie run once --goal "…"        # Single cycle
+adelie run ws <N>                 # Resume workspace #N
+```
+
+### Configuration
+
+```bash
+adelie config                     # Show current config
+adelie config --provider ollama   # Switch LLM provider
+adelie config --model gpt-4o     # Set model
+adelie config --api-key KEY       # Set Gemini API key
+adelie config --ollama-url URL    # Set Ollama server URL
+```
+
+### Settings
+
+```bash
+adelie settings                   # View all settings
+adelie settings --global          # View global settings
+adelie settings set <key> <val>   # Change workspace setting
+adelie settings set --global <key> <val>  # Change global setting
+adelie settings reset <key>       # Reset to default
+```
+
+Available settings: `dashboard`, `dashboard.port`, `loop.interval`, `plan.mode`, `sandbox`, `mcp`, `browser.search`, `browser.max_pages`, `fallback.models`, `fallback.cooldown`, `language`
+
+### Monitoring
+
+```bash
+adelie status                     # System health & provider status
+adelie inform                     # AI-generated project report
+adelie phase                      # Show current phase
+adelie phase set <phase>          # Set phase manually
+adelie metrics                    # Cycle metrics & history
+```
+
+### Knowledge Base & Project
+
+```bash
+adelie kb                         # KB file counts by category
+adelie kb --clear-errors          # Clear error files
+adelie kb --reset                 # Reset entire KB
+adelie goal                       # Show project goal
+adelie goal set "…"               # Set project goal
+adelie feedback "message"         # Inject feedback into AI loop
+adelie research "topic"           # Web search → KB
+adelie spec load <file>           # Load spec (MD/PDF/DOCX) into KB
+adelie git                        # Git status & recent commits
+```
+
+### Integrations
+
+```bash
+adelie telegram setup             # Configure Telegram bot
+adelie telegram start             # Start Telegram bot
+adelie ollama list                # List Ollama models
+adelie ollama pull <model>        # Download model
+adelie ollama run [model]         # Interactive chat
+```
+
+---
+
+## Configuration
+
+### Environment (`.adelie/.env`)
 
 | Variable | Default | Description |
-|----------|---------|-------------|
+|:--|:--|:--|
 | `LLM_PROVIDER` | `gemini` | `gemini` or `ollama` |
-| `GEMINI_API_KEY` | — | Required for Gemini |
-| `GEMINI_MODEL` | `gemini-2.0-flash` | Gemini model |
-| `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama URL |
-| `OLLAMA_MODEL` | `llama3.2` | Ollama model |
-| `FALLBACK_MODELS` | — | Fallback chain (e.g. `gemini:flash,ollama:llama3.2`) |
-| `LOOP_INTERVAL_SECONDS` | `30` | Loop interval |
-| `ADELIE_LANGUAGE` | `ko` | Display language |
+| `GEMINI_API_KEY` | — | Google Gemini API key |
+| `GEMINI_MODEL` | `gemini-2.0-flash` | Gemini model name |
+| `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama server URL |
+| `OLLAMA_MODEL` | `llama3.2` | Ollama model name |
+| `FALLBACK_MODELS` | — | Fallback chain (`gemini:flash,ollama:llama3.2`) |
+| `LOOP_INTERVAL_SECONDS` | `30` | Cycle interval in seconds |
+| `DASHBOARD_ENABLED` | `true` | Dashboard on/off |
+| `DASHBOARD_PORT` | `5042` | Dashboard port |
+| `PLAN_MODE` | `false` | Require approval before execution |
+| `SANDBOX_MODE` | `none` | `none`, `seatbelt`, or `docker` |
 
-### Docker Sandbox Config
+### Docker Sandbox
 
 Optional `.adelie/sandbox.json`:
 
@@ -259,15 +317,14 @@ Optional `.adelie/sandbox.json`:
     "workspaceAccess": "rw",
     "network": "none",
     "memoryLimit": "512m",
-    "cpuLimit": 1.0,
-    "readOnlyRoot": false
+    "cpuLimit": 1.0
   }
 }
 ```
 
-### Skills
+### Custom Skills
 
-Place skills in `.adelie/skills/<name>/SKILL.md`:
+Place custom skills in `.adelie/skills/<name>/SKILL.md`:
 
 ```yaml
 ---
@@ -276,138 +333,95 @@ description: React/TypeScript best practices
 agents: [coder, reviewer]
 trigger: auto
 ---
-# Instructions
-Use functional components...
+Use functional components with TypeScript props…
 ```
 
 ---
 
-## 🧪 Testing
+## Platform Features
+
+| Feature | Description |
+|:--|:--|
+| 💾 **Checkpoints** | Auto-snapshot before promotion, instant rollback |
+| 🐳 **Docker Sandbox** | Configurable workspace isolation, network policy, resource limits |
+| 🌐 **REST Gateway** | HTTP API — `/api/status`, `/api/tools`, `/api/control` |
+| 🧩 **Skill Registry** | Install/update skills from Git repos or local directories |
+| 📡 **Multichannel** | `ChannelProvider` ABC — Discord, Slack, custom channels |
+| 🤝 **A2A Protocol** | Agent-to-Agent HTTP for external agent integration |
+| 🔧 **MCP Support** | Model Context Protocol for external tool ecosystems |
+| 📊 **Dashboard** | Real-time web UI with SSE streaming on port 5042 |
+| 🔄 **Loop Detector** | 5 stuck-pattern types with escalating interventions |
+| ⚡ **Scheduler** | Per-agent frequency control with cooldown/priority |
+
+---
+
+## Testing
 
 ```bash
-# Run all tests
-python -m pytest tests/ -v
-
-# Specific modules
-python -m pytest tests/test_checkpoint.py -v
-python -m pytest tests/test_gateway.py -v
-python -m pytest tests/test_a2a.py -v
-```
-
-**183 tests** across 8 test suites:
-
-| Suite | Tests | Coverage |
-|-------|-------|----------|
-| MCP Client | 35 | MCP server connection, tool discovery |
-| Tool Registry | 20 | Tool registration, categories, user tools |
-| Checkpoint | 16 | Create, restore, prune, metadata |
-| Docker Sandbox | 26 | Config, bind safety, Docker wrapping |
-| Gateway API | 18 | REST endpoints, auth, CORS |
-| Skill Registry | 19 | Install, uninstall, manifest, helpers |
-| Multichannel | 24 | Providers, router, broadcast, events |
-| A2A Protocol | 25 | Task lifecycle, persistence, HTTP API |
-
----
-
-## 📁 Project Structure
-
-```
-Adelie/
-├── adelie/                     # Core package
-│   ├── orchestrator.py         # Main loop controller (state machine)
-│   ├── cli.py                  # CLI commands
-│   ├── config.py               # Configuration & env loading
-│   ├── llm_client.py           # LLM abstraction (Gemini + Ollama)
-│   ├── checkpoint.py           # 💾 Checkpoint system
-│   ├── sandbox.py              # 🐳 Docker/Seatbelt sandboxing
-│   ├── gateway.py              # 🌐 REST API gateway
-│   ├── skill_manager.py        # 🧩 Skill loading & registry
-│   ├── scheduler.py            # Per-agent scheduling
-│   ├── phases.py               # Project lifecycle phases
-│   ├── hooks.py                # Event-driven plugin system
-│   ├── loop_detector.py        # Stuck-loop detection
-│   ├── context_engine.py       # Per-agent context assembly
-│   ├── process_supervisor.py   # Subprocess management
-│   ├── feedback_queue.py       # User feedback injection
-│   ├── channels/               # 📡 Multichannel abstraction
-│   │   ├── base.py             #   ChannelProvider ABC
-│   │   ├── discord.py          #   Discord integration
-│   │   ├── slack.py            #   Slack integration
-│   │   └── router.py           #   Multi-channel routing
-│   ├── a2a/                    # 🤝 Agent-to-Agent protocol
-│   │   ├── types.py            #   Task/Event types
-│   │   ├── server.py           #   A2A HTTP server
-│   │   └── persistence.py      #   Task persistence
-│   ├── agents/                 # AI agents (10 specialized)
-│   │   ├── expert_ai.py
-│   │   ├── writer_ai.py
-│   │   ├── coder_ai.py
-│   │   ├── reviewer_ai.py
-│   │   ├── tester_ai.py
-│   │   ├── runner_ai.py
-│   │   ├── monitor_ai.py
-│   │   ├── analyst_ai.py
-│   │   ├── research_ai.py
-│   │   └── scanner_ai.py
-│   └── kb/                     # Knowledge Base
-│       ├── retriever.py
-│       └── embedding_store.py
-├── tests/                      # 183 tests
-├── bin/                        # Node.js CLI wrapper
-├── requirements.txt            # Python dependencies
-└── package.json                # npm config
+python -m pytest tests/ -v    # 183 tests
 ```
 
 ---
 
-## ⚙️ How It Works
+## Project Structure
 
-Each orchestrator cycle runs these steps:
-
-1. **Writer AI** creates/updates Knowledge Base files
-2. **Expert AI** reads KB and makes structured decisions (JSON)
-3. **Research AI** searches the web if requested
-4. **Coder Manager** dispatches code generation by layer
-5. **Reviewer AI** reviews code; retries on failure
-6. **💾 Checkpoint** snapshots current files before promotion
-7. **Staging → Project** promotes approved code
-8. **Tester AI** runs tests; retries on failure
-9. **Runner AI** builds and deploys
-10. **Monitor AI** checks health; restarts if needed
-11. **Phase Gates** evaluate readiness for next phase
-
-The loop runs continuously with the **Scheduler** controlling agent frequency and the **Loop Detector** intervening when the system gets stuck.
-
----
-
-## 🗺️ Roadmap
-
-- [x] **Phase 1** — MCP Server Integration
-- [x] **Phase 2** — Checkpoint System, Docker Sandboxing, REST Gateway
-- [x] **Phase 3** — Skill Registry, Multichannel, A2A Protocol
-- [ ] **Phase 4** — VS Code Extension, Web Dashboard, Plugin Marketplace
-
----
-
-## 🤝 Contributing
-
-Contributions are welcome! Please feel free to submit Pull Requests.
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Run tests (`python -m pytest tests/ -v`)
-4. Commit your changes (`git commit -m 'Add amazing feature'`)
-5. Push to the branch (`git push origin feature/amazing-feature`)
-6. Open a Pull Request
+```
+adelie/
+├── orchestrator.py          # Main loop — state machine + phase gates
+├── cli.py                   # All CLI commands
+├── config.py                # Configuration & env loading
+├── llm_client.py            # LLM abstraction (Gemini + Ollama + fallback)
+├── interactive.py           # REPL + dashboard integration
+├── dashboard.py             # Real-time web server (HTTP + SSE)
+├── dashboard_html.py        # Embedded dashboard UI template
+├── agents/                  # 10 specialized AI agents
+│   ├── writer_ai.py         #   Knowledge Base curator
+│   ├── expert_ai.py         #   Strategic decision maker
+│   ├── coder_ai.py          #   Code generator
+│   ├── coder_manager.py     #   Layer dispatch & retry
+│   ├── reviewer_ai.py       #   Quality reviewer
+│   ├── tester_ai.py         #   Test runner
+│   ├── runner_ai.py         #   Build & deploy
+│   ├── monitor_ai.py        #   Health monitor
+│   ├── analyst_ai.py        #   Trend analyzer
+│   ├── research_ai.py       #   Web researcher
+│   └── scanner_ai.py        #   Initial codebase scanner
+├── kb/                      # Knowledge Base (retriever + embeddings)
+├── channels/                # Multichannel providers (Discord, Slack)
+├── a2a/                     # Agent-to-Agent protocol
+├── checkpoint.py            # Snapshot & rollback
+├── sandbox.py               # Docker/Seatbelt isolation
+├── gateway.py               # REST API gateway
+├── skill_manager.py         # Skill registry
+├── loop_detector.py         # Stuck-pattern detection
+├── scheduler.py             # Per-agent scheduling
+├── phases.py                # Lifecycle phase definitions
+├── hooks.py                 # Event-driven plugin system
+├── process_supervisor.py    # Subprocess management
+└── env_strategy.py          # Runtime environment detection
+```
 
 ---
 
-## 📄 License
+## Contributing
 
-MIT — see [LICENSE](./LICENSE) for details.
+```bash
+git clone https://github.com/Ade1ie/adelie.git
+cd adelie
+pip install -r requirements.txt
+python -m pytest tests/ -v   # Ensure all 183 tests pass
+```
+
+1. Fork → branch → implement → test → PR
+2. Follow existing code style and patterns
+3. Add tests for new features
 
 ---
+
+## License
+
+[MIT](./LICENSE)
 
 <p align="center">
-  <sub>Built with 🐧 Adelie — the penguin that codes</sub>
+  <sub>Built with 🐧 by the Adelie team</sub>
 </p>

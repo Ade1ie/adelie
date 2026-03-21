@@ -167,10 +167,15 @@ def cmd_help(args: argparse.Namespace) -> None:
   [green]adelie config[/green]                    Show current configuration
   [green]adelie config --provider[/green] [dim]ollama[/dim]  Switch LLM provider
   [green]adelie config --model[/green] [dim]gemma3:12b[/dim]  Set model
-  [green]adelie config --interval[/green] [dim]60[/dim]     Set loop interval (seconds)
   [green]adelie config --api-key[/green] [dim]KEY[/dim]     Set Gemini API key
   [green]adelie config --ollama-url[/green] [dim]URL[/dim]  Set Ollama server URL
-  [green]adelie config --lang[/green] [dim]ko|en[/dim]      Set display language
+
+[bold]Settings[/bold]
+  [green]adelie settings[/green]                  Show all settings (workspace + global)
+  [green]adelie settings --global[/green]          Show global-only settings
+  [green]adelie settings set[/green] [dim]<key> <val>[/dim]  Change a workspace setting
+  [green]adelie settings set --global[/green] [dim]<key> <val>[/dim]  Change a global setting
+  [green]adelie settings reset[/green] [dim]<key>[/dim]     Reset setting to default
 
 [bold]Monitoring[/bold]
   [green]adelie status[/green]                    System health & provider status
@@ -781,6 +786,236 @@ def cmd_config(args: argparse.Namespace) -> None:
         ws_root = _find_workspace_root()
         console.print(f"\n[dim]LLM: {ws_root / '.env'}[/dim]")
         console.print(f"[dim]Config: {_workspace_config_path()}[/dim]")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SETTINGS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Settings definition: key -> (env_var, config_json_key, default, type, description)
+# env_var: key in .env file (or None if stored in config.json)
+# config_json_key: key in config.json (or None if stored in .env)
+_SETTINGS_DEFS: dict[str, dict] = {
+    "dashboard":          {"env": "DASHBOARD_ENABLED",  "cfg": None, "default": "true",   "type": "bool",  "desc": "대시보드 on/off",             "group": "🌐 Dashboard"},
+    "dashboard.port":     {"env": "DASHBOARD_PORT",     "cfg": None, "default": "5042",   "type": "int",   "desc": "대시보드 포트",               "group": "🌐 Dashboard"},
+    "loop.interval":      {"env": None,                 "cfg": "loop_interval", "default": "30", "type": "int", "desc": "루프 간격 (초)",          "group": "⚡ Runtime"},
+    "plan.mode":          {"env": "PLAN_MODE",          "cfg": None, "default": "false",  "type": "bool",  "desc": "Plan Mode (승인 후 실행)",    "group": "⚡ Runtime"},
+    "sandbox":            {"env": "SANDBOX_MODE",       "cfg": None, "default": "none",   "type": "str",   "desc": "샌드박스 (none/seatbelt/docker)", "group": "⚡ Runtime"},
+    "mcp":                {"env": "MCP_ENABLED",        "cfg": None, "default": "true",   "type": "bool",  "desc": "MCP 프로토콜 on/off",        "group": "⚡ Runtime"},
+    "browser.search":     {"env": "BROWSER_SEARCH_ENABLED", "cfg": None, "default": "true", "type": "bool", "desc": "브라우저 검색 on/off",      "group": "🔍 Search"},
+    "browser.max_pages":  {"env": "BROWSER_SEARCH_MAX_PAGES","cfg": None,"default": "3",  "type": "int",   "desc": "검색 최대 페이지",           "group": "🔍 Search"},
+    "fallback.models":    {"env": "FALLBACK_MODELS",    "cfg": None, "default": "",       "type": "str",   "desc": "폴백 모델 체인",             "group": "🔄 Fallback"},
+    "fallback.cooldown":  {"env": "FALLBACK_COOLDOWN_SECONDS","cfg": None,"default": "60","type": "int",   "desc": "폴백 쿨다운 (초)",           "group": "🔄 Fallback"},
+    "language":           {"env": "ADELIE_LANGUAGE",    "cfg": None, "default": "ko",     "type": "str",   "desc": "언어 (ko/en)",               "group": "🎨 Display"},
+}
+
+_GLOBAL_SETTINGS_FILE = Path.home() / ".adelie" / "settings.json"
+
+
+def _load_global_settings() -> dict:
+    """Load global settings from ~/.adelie/settings.json."""
+    if _GLOBAL_SETTINGS_FILE.exists():
+        try:
+            return json.loads(_GLOBAL_SETTINGS_FILE.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            return {}
+    return {}
+
+
+def _save_global_settings(settings: dict) -> None:
+    """Save global settings to ~/.adelie/settings.json."""
+    _GLOBAL_SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    _GLOBAL_SETTINGS_FILE.write_text(
+        json.dumps(settings, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
+
+
+def _read_ws_env_value(env_key: str) -> str | None:
+    """Read a specific env key from workspace .env file (raw file read, not os.environ)."""
+    ws_root = _find_workspace_root()
+    env_path = ws_root / ".env"
+    if not env_path.exists():
+        return None
+    for line in env_path.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if stripped.startswith(f"{env_key}="):
+            return stripped.split("=", 1)[1].strip()
+    return None
+
+
+def _resolve_setting(key: str, is_global: bool = False) -> tuple[str, str]:
+    """
+    Resolve a setting value and its source.
+    Priority: workspace .env/config.json > global settings > default
+    Returns (value, source).
+    """
+    defn = _SETTINGS_DEFS.get(key)
+    if not defn:
+        return ("", "unknown")
+
+    # If global-only, just check global settings
+    if is_global:
+        gs = _load_global_settings()
+        if key in gs:
+            return (str(gs[key]), "global")
+        return (defn["default"], "default")
+
+    # Workspace level: check .env or config.json
+    ws_value = None
+    if defn["env"]:
+        ws_value = _read_ws_env_value(defn["env"])
+    elif defn["cfg"]:
+        ws_config = _load_workspace_config()
+        if defn["cfg"] in ws_config:
+            ws_value = str(ws_config[defn["cfg"]])
+
+    if ws_value is not None:
+        return (ws_value, "workspace")
+
+    # Fall back to global
+    gs = _load_global_settings()
+    if key in gs:
+        return (str(gs[key]), "global")
+
+    return (defn["default"], "default")
+
+
+def cmd_settings(args: argparse.Namespace) -> None:
+    """View, update, or reset settings (global or workspace-level)."""
+    _ensure_adelie_config()
+
+    action = getattr(args, "settings_action", "show") or "show"
+    is_global = getattr(args, "use_global", False)
+
+    if action == "set":
+        key = getattr(args, "settings_key", None)
+        value = getattr(args, "settings_value", None)
+        if not key or value is None:
+            console.print("[red]Usage: adelie settings set <key> <value>[/red]")
+            return
+
+        if key not in _SETTINGS_DEFS:
+            console.print(f"[red]ERROR: Unknown setting: {key}[/red]")
+            console.print(f"[dim]Available: {', '.join(sorted(_SETTINGS_DEFS.keys()))}[/dim]")
+            return
+
+        defn = _SETTINGS_DEFS[key]
+
+        # Validate type
+        if defn["type"] == "bool" and value.lower() not in ("true", "false"):
+            console.print(f"[red]ERROR: '{key}' must be 'true' or 'false'[/red]")
+            return
+        if defn["type"] == "int":
+            try:
+                int(value)
+            except ValueError:
+                console.print(f"[red]ERROR: '{key}' must be a number[/red]")
+                return
+
+        if is_global:
+            gs = _load_global_settings()
+            gs[key] = value
+            _save_global_settings(gs)
+            console.print(f"[green]✅ [global] {key} → {value}[/green]")
+        else:
+            if defn["env"]:
+                _update_env_file({defn["env"]: value})
+            elif defn["cfg"]:
+                ws_config = _load_workspace_config()
+                ws_config[defn["cfg"]] = int(value) if defn["type"] == "int" else value
+                _save_workspace_config(ws_config)
+            console.print(f"[green]✅ [workspace] {key} → {value}[/green]")
+
+    elif action == "reset":
+        key = getattr(args, "settings_key", None)
+        if not key:
+            console.print("[red]Usage: adelie settings reset <key>[/red]")
+            return
+
+        if key not in _SETTINGS_DEFS:
+            console.print(f"[red]ERROR: Unknown setting: {key}[/red]")
+            return
+
+        defn = _SETTINGS_DEFS[key]
+        default_val = defn["default"]
+
+        if is_global:
+            gs = _load_global_settings()
+            gs.pop(key, None)
+            _save_global_settings(gs)
+            console.print(f"[green]✅ [global] {key} reset (removed)[/green]")
+        else:
+            # Reset workspace value to default
+            if defn["env"]:
+                _update_env_file({defn["env"]: default_val})
+            elif defn["cfg"]:
+                ws_config = _load_workspace_config()
+                if defn["type"] == "int":
+                    ws_config[defn["cfg"]] = int(default_val)
+                else:
+                    ws_config[defn["cfg"]] = default_val
+                _save_workspace_config(ws_config)
+            console.print(f"[green]✅ [workspace] {key} → {default_val} (default)[/green]")
+
+    else:
+        # Show all settings
+        scope_label = "Global Settings" if is_global else "Settings (workspace + global)"
+        table = Table(
+            title=f"Adelie {scope_label}",
+            show_header=True,
+            border_style="cyan",
+        )
+        table.add_column("Setting", style="bold")
+        table.add_column("Value")
+        table.add_column("Source", style="dim")
+        table.add_column("Description", style="dim")
+
+        current_group = ""
+        for key in _SETTINGS_DEFS:
+            defn = _SETTINGS_DEFS[key]
+            group = defn["group"]
+
+            # Group separator
+            if group != current_group:
+                if current_group:
+                    table.add_row("", "", "", "", style="dim")
+                current_group = group
+                table.add_row(f"[bold cyan]{group}[/bold cyan]", "", "", "")
+
+            value, source = _resolve_setting(key, is_global)
+
+            # Color the source
+            if source == "workspace":
+                source_styled = "[green]workspace[/green]"
+            elif source == "global":
+                source_styled = "[yellow]global[/yellow]"
+            else:
+                source_styled = "[dim]default[/dim]"
+
+            # Color bool values
+            if defn["type"] == "bool":
+                if value.lower() == "true":
+                    value_styled = "[green]true[/green]"
+                else:
+                    value_styled = "[dim]false[/dim]"
+            elif not value:
+                value_styled = "[dim](not set)[/dim]"
+            else:
+                value_styled = value
+
+            table.add_row(f"  {key}", value_styled, source_styled, defn["desc"])
+
+        console.print(table)
+
+        if is_global:
+            console.print(f"\n[dim]Global: {_GLOBAL_SETTINGS_FILE}[/dim]")
+        else:
+            ws_root = _find_workspace_root()
+            console.print(f"\n[dim]Workspace: {ws_root / '.env'} + {_workspace_config_path()}[/dim]")
+            console.print(f"[dim]Global:    {_GLOBAL_SETTINGS_FILE}[/dim]")
+
+        console.print(f"\n[dim]Change: adelie settings set <key> <value>[/dim]")
+        console.print(f"[dim]Global: adelie settings set --global <key> <value>[/dim]")
 
 
 def cmd_kb(args: argparse.Namespace) -> None:
@@ -1542,6 +1777,19 @@ def main() -> None:
     p_config.add_argument("--sandbox", type=str, help="Sandbox mode: 'none', 'seatbelt', or 'docker'")
     p_config.add_argument("--plan-mode", type=str, dest="plan_mode", help="Plan mode: 'true' or 'false'")
     p_config.set_defaults(func=cmd_config)
+
+    # ── settings ──
+    p_settings = subparsers.add_parser("settings", help="Manage runtime settings (global & workspace)")
+    p_settings.add_argument("settings_action", nargs="?", default="show",
+                            choices=["show", "set", "reset"],
+                            help="show (default) / set / reset")
+    p_settings.add_argument("settings_key", nargs="?", default=None,
+                            help="Setting key (e.g. dashboard, loop.interval)")
+    p_settings.add_argument("settings_value", nargs="?", default=None,
+                            help="New value (for set)")
+    p_settings.add_argument("--global", action="store_true", dest="use_global",
+                            help="Target global settings (~/.adelie/settings.json)")
+    p_settings.set_defaults(func=cmd_settings)
 
     # ── kb ────────
     p_kb = subparsers.add_parser("kb", help="Knowledge Base management")

@@ -7,7 +7,8 @@ Serves a single-page dashboard on a configurable port (default 5042).
 Features:
   - SSE (Server-Sent Events) for live push to browsers
   - JSON REST API for initial state / history
-  - Thread-safe event broadcasting
+  - Thread-safe event broadcasting with batching
+  - ThreadingHTTPServer for concurrent SSE + API handling
   - No external dependencies — uses stdlib http.server
 
 Started automatically from interactive.py when `adelie run` is called.
@@ -15,9 +16,11 @@ Started automatically from interactive.py when `adelie run` is called.
 
 from __future__ import annotations
 
+import collections
 import json
 import queue
 import re
+import socketserver
 import threading
 import time
 from datetime import datetime
@@ -30,14 +33,14 @@ from adelie.dashboard_html import DASHBOARD_HTML
 # ── Event Bus ────────────────────────────────────────────────────────────────
 
 class EventBus:
-    """Thread-safe pub/sub for SSE clients."""
+    """Thread-safe pub/sub for SSE clients with event coalescing."""
 
     def __init__(self):
         self._clients: list[queue.Queue] = []
         self._lock = threading.Lock()
 
     def subscribe(self) -> queue.Queue:
-        q: queue.Queue = queue.Queue(maxsize=200)
+        q: queue.Queue = queue.Queue(maxsize=500)
         with self._lock:
             self._clients.append(q)
         return q
@@ -73,18 +76,15 @@ class EventBus:
 # ── Log Ring Buffer ──────────────────────────────────────────────────────────
 
 class LogBuffer:
-    """Thread-safe ring buffer for recent log entries."""
+    """Thread-safe ring buffer for recent log entries using deque for O(1) ops."""
 
     def __init__(self, maxlen: int = 200):
-        self._buf: list[dict] = []
-        self._maxlen = maxlen
+        self._buf: collections.deque = collections.deque(maxlen=maxlen)
         self._lock = threading.Lock()
 
     def append(self, entry: dict) -> None:
         with self._lock:
             self._buf.append(entry)
-            if len(self._buf) > self._maxlen:
-                self._buf.pop(0)
 
     def get_all(self) -> list[dict]:
         with self._lock:
@@ -110,10 +110,22 @@ class DashboardState:
         self.events = EventBus()
         self.logs = LogBuffer(maxlen=200)
         self._lock = threading.Lock()
+        # Debounce tracking for agent updates
+        self._agent_last_publish: dict[str, float] = {}
+        self._agent_debounce_ms: float = 0.05  # 50ms debounce for same agent
 
     def update_agent(self, name: str, info: dict) -> None:
+        now = time.monotonic()
         with self._lock:
             self.agents[name] = info
+            last = self._agent_last_publish.get(name, 0)
+            # Coalesce rapid agent updates (< 50ms apart) unless state changed
+            prev_state = self._agent_last_publish.get(f"{name}_state")
+            cur_state = info.get("state")
+            if cur_state == prev_state and (now - last) < self._agent_debounce_ms:
+                return
+            self._agent_last_publish[name] = now
+            self._agent_last_publish[f"{name}_state"] = cur_state
         self.events.publish("agent", {"name": name, **info})
 
     def update_cycle(self, iteration: int, phase: str, state: str) -> None:
@@ -124,6 +136,7 @@ class DashboardState:
             # Reset agents
             for name in list(self.agents.keys()):
                 self.agents[name] = {"state": "idle", "detail": "idle", "elapsed": 0}
+            self._agent_last_publish.clear()
         self.events.publish("cycle_start", {"iteration": iteration, "phase": phase, "state": state})
         self.events.publish("state", {"cycle": iteration, "phase": phase, "goal": self.goal})
 
@@ -212,7 +225,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.send_error(404)
 
     def _handle_sse(self, ds: DashboardState) -> None:
-        """Stream Server-Sent Events to the client."""
+        """Stream Server-Sent Events to the client with batched flushing."""
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
         self.send_header("Cache-Control", "no-cache")
@@ -228,18 +241,50 @@ class DashboardHandler(BaseHTTPRequestHandler):
         client_q = ds.events.subscribe()
         try:
             while True:
+                # Batch: collect all available events within a short window
+                batch: list[str] = []
                 try:
-                    payload = client_q.get(timeout=15)
-                    self.wfile.write(payload.encode("utf-8"))
-                    self.wfile.flush()
+                    # Block up to 100ms for first event, then drain
+                    payload = client_q.get(timeout=0.1)
+                    batch.append(payload)
                 except queue.Empty:
-                    # Send keepalive comment
-                    self.wfile.write(": keepalive\n\n".encode("utf-8"))
+                    pass
+
+                # Drain any additional queued events (non-blocking)
+                while not client_q.empty() and len(batch) < 50:
+                    try:
+                        batch.append(client_q.get_nowait())
+                    except queue.Empty:
+                        break
+
+                if batch:
+                    # Write all events in one I/O call
+                    combined = "".join(batch)
+                    self.wfile.write(combined.encode("utf-8"))
                     self.wfile.flush()
+                else:
+                    # Send keepalive every ~15s (150 empty 100ms cycles)
+                    # Use a counter to avoid frequent keepalives
+                    if not hasattr(self, '_keepalive_counter'):
+                        self._keepalive_counter = 0
+                    self._keepalive_counter += 1
+                    if self._keepalive_counter >= 150:  # ~15 seconds
+                        self.wfile.write(": keepalive\n\n".encode("utf-8"))
+                        self.wfile.flush()
+                        self._keepalive_counter = 0
+
         except (BrokenPipeError, ConnectionResetError, OSError):
             pass
         finally:
             ds.events.unsubscribe(client_q)
+
+
+# ── Threading HTTP Server ────────────────────────────────────────────────────
+
+class ThreadingDashboardHTTPServer(socketserver.ThreadingMixIn, HTTPServer):
+    """Multi-threaded HTTP server so SSE connections don't block API requests."""
+    daemon_threads = True
+    allow_reuse_address = True
 
 
 # ── Dashboard Server ─────────────────────────────────────────────────────────
@@ -258,13 +303,13 @@ class DashboardServer:
     def __init__(self, state: DashboardState, port: int = 5042):
         self.state = state
         self.port = port
-        self._httpd: Optional[HTTPServer] = None
+        self._httpd: Optional[ThreadingDashboardHTTPServer] = None
         self._thread: Optional[threading.Thread] = None
 
     def start(self) -> bool:
         """Start the dashboard server in a background thread. Returns True on success."""
         try:
-            self._httpd = HTTPServer(("0.0.0.0", self.port), DashboardHandler)
+            self._httpd = ThreadingDashboardHTTPServer(("0.0.0.0", self.port), DashboardHandler)
             self._httpd._dashboard_state = self.state  # type: ignore
             self._httpd.timeout = 0.5
             self._thread = threading.Thread(
