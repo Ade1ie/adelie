@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.2.5] - 2026-03-22
+
+### Fixed
+- **Dashboard blank/Cycle #0**: Critical bug in `interactive.py` — `_setup_logger()` was called before `_start_dashboard()`, so `ds = self._dashboard_state` captured `None`. All dashboard callbacks (`update_cycle`, `update_metrics`, `update_agent`, `add_log`) were silent no-ops. Fixed by (1) moving `_start_dashboard` before `_setup_logger`, (2) using lazy `self._dashboard_state` references inside each callback.
+
+
 ## [0.2.4] - 2026-03-21
 
 ### Fixed

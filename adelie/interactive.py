@@ -194,6 +194,9 @@ class AdelieApp:
             workspace=str(cfg.PROJECT_ROOT),
         )
 
+        # Start dashboard server FIRST (so _setup_logger can reference it)
+        self._start_dashboard(cfg)
+
         # Setup UILogger
         self._setup_logger()
 
@@ -202,9 +205,6 @@ class AdelieApp:
 
         # Wire orchestrator callbacks
         self._wire_orchestrator()
-
-        # Start dashboard server
-        self._start_dashboard(cfg)
 
         self._real_console.print("[dim]Type '/help' for a list of commands.[/dim]")
         self._real_console.print()
@@ -251,11 +251,11 @@ class AdelieApp:
         """Create UILogger and wire callbacks."""
         # Use the saved real console so callbacks never recurse through UILogger
         real_con = self._real_console
-        ds = self._dashboard_state  # may be None if dashboard disabled
         self._ui_logger = UILogger()
 
         def _on_agent_update(name, info):
             print_agent_event(name, info)
+            ds = self._dashboard_state
             if ds:
                 ds.update_agent(name, {
                     "state": info.state.value if hasattr(info, 'state') else str(info.state) if hasattr(info, 'state') else "idle",
@@ -265,6 +265,7 @@ class AdelieApp:
 
         def _on_log(category, obj):
             real_con.print(obj)
+            ds = self._dashboard_state
             if ds:
                 import re
                 msg = re.sub(r'\[/?[^\]]*\]', '', str(obj))
@@ -272,11 +273,13 @@ class AdelieApp:
 
         def _on_cycle_start(it, ph, st):
             print_cycle_header(it, ph, st)
+            ds = self._dashboard_state
             if ds:
                 ds.update_cycle(it, ph, st)
 
         def _on_cycle_metrics(m):
             print_cycle_metrics(m)
+            ds = self._dashboard_state
             if ds:
                 ds.update_metrics({
                     "total_tokens": getattr(m, 'total_tokens', 0),
@@ -292,6 +295,7 @@ class AdelieApp:
         self._ui_logger.on_log = _on_log
         self._ui_logger.on_cycle_start = _on_cycle_start
         self._ui_logger.on_cycle_metrics = _on_cycle_metrics
+
 
     def _wire_orchestrator(self):
         """Wire orchestrator event callbacks."""
