@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import platform
 import shutil
 import subprocess
 import sys
@@ -291,6 +292,173 @@ def _sync_specs() -> None:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# OS DETECTION
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+def _detect_os() -> dict:
+    """Detect the current OS, shell, and architecture."""
+    system = platform.system()   # "Windows", "Linux", "Darwin"
+    release = platform.release()
+    machine = platform.machine()  # "x86_64", "arm64", "AMD64"
+    version = platform.version()
+
+    # Detect shell
+    if system == "Windows":
+        shell = "PowerShell"
+        comspec = os.environ.get("COMSPEC", "")
+        # Detect if running in PowerShell vs cmd
+        if os.environ.get("PSModulePath"):
+            shell = "PowerShell"
+        elif "cmd.exe" in comspec.lower():
+            shell = "cmd"
+    else:
+        shell_path = os.environ.get("SHELL", "/bin/sh")
+        shell = Path(shell_path).name  # "bash", "zsh", "fish", etc.
+
+    # Friendly OS name
+    if system == "Darwin":
+        os_name = "macOS"
+        try:
+            mac_ver = platform.mac_ver()[0]
+            if mac_ver:
+                release = mac_ver
+        except Exception:
+            pass
+    elif system == "Windows":
+        os_name = "Windows"
+    else:
+        os_name = "Linux"
+        # Try to get distro info
+        try:
+            import distro  # type: ignore
+            os_name = f"Linux ({distro.name(pretty=True)})"
+        except ImportError:
+            # Fallback: read /etc/os-release
+            try:
+                osrel = Path("/etc/os-release").read_text()
+                for line in osrel.splitlines():
+                    if line.startswith("PRETTY_NAME="):
+                        os_name = f"Linux ({line.split('=', 1)[1].strip('\"')})"
+                        break
+            except Exception:
+                pass
+
+    return {
+        "system": system,
+        "os_name": os_name,
+        "release": release,
+        "machine": machine,
+        "version": version,
+        "shell": shell,
+    }
+
+
+def _generate_os_context(os_info: dict) -> str:
+    """Generate English OS-specific context markdown for AI agent prompts."""
+    system = os_info["system"]
+    os_name = os_info["os_name"]
+    release = os_info["release"]
+    machine = os_info["machine"]
+    shell = os_info["shell"]
+
+    header = (
+        f"## System Environment\n\n"
+        f"- **OS**: {os_name} {release} / {machine}\n"
+        f"- **Shell**: {shell}\n"
+    )
+
+    if system == "Windows":
+        return header + (
+            "- **Path separator**: `\\` (backslash)\n"
+            "- **Line ending**: CRLF\n\n"
+            "### Command Reference (use ONLY these for this OS)\n\n"
+            "| Task | Command |\n"
+            "|------|---------|\n"
+            "| Delete file | `Remove-Item -Force <path>` |\n"
+            "| Delete directory | `Remove-Item -Recurse -Force <path>` |\n"
+            "| Copy file | `Copy-Item <src> <dst>` |\n"
+            "| Move file | `Move-Item <src> <dst>` |\n"
+            "| List files | `Get-ChildItem` or `ls` |\n"
+            '| Set env variable | `$env:VAR = "value"` |\n'
+            "| Chain commands | `cmd1; cmd2` (PowerShell) |\n"
+            "| Run script | `.\\script.ps1` |\n"
+            "| Null device | `$null` or `NUL` |\n\n"
+            "### Docker on Windows\n"
+            '- Use PowerShell-style volume mounts: `-v "${PWD}:/app"`\n'
+            "- Container shell: use `/bin/sh` (NOT `/bin/bash` unless confirmed)\n"
+            "- Line endings: ensure Dockerfiles use LF, not CRLF\n"
+            "- Docker Desktop required (or WSL2 backend)\n\n"
+            "### Testing & Build\n"
+            "- Use `npx` or `npm run` for Node.js scripts\n"
+            "- Python: `python` (not `python3`)\n"
+            "- pytest: `python -m pytest`\n"
+            "- Avoid `&&` for chaining — use `;` in PowerShell\n"
+        )
+    elif system == "Darwin":
+        silicon_note = ""
+        if machine == "arm64":
+            silicon_note = (
+                "- On Apple Silicon (arm64): be aware of `--platform linux/amd64` for x86 images\n"
+                "- Homebrew packages are at `/opt/homebrew/`\n"
+            )
+        else:
+            silicon_note = "- Homebrew packages are at `/usr/local/`\n"
+
+        return header + (
+            "- **Path separator**: `/` (forward slash)\n"
+            "- **Line ending**: LF\n\n"
+            "### Command Reference (use ONLY these for this OS)\n\n"
+            "| Task | Command |\n"
+            "|------|---------|\n"
+            "| Delete file | `rm -f <path>` |\n"
+            "| Delete directory | `rm -rf <path>` |\n"
+            "| Copy file | `cp <src> <dst>` |\n"
+            "| Move file | `mv <src> <dst>` |\n"
+            "| List files | `ls -la` |\n"
+            '| Set env variable | `export VAR="value"` |\n'
+            "| Chain commands | `cmd1 && cmd2` |\n"
+            "| Run script | `bash script.sh` or `./script.sh` |\n"
+            "| Null device | `/dev/null` |\n\n"
+            "### Docker on macOS\n"
+            '- Volume mounts: `-v "$(pwd):/app"`\n'
+            "- Container shell: `/bin/bash` or `/bin/sh`\n"
+            "- Docker Desktop for Mac required\n"
+            f"{silicon_note}\n"
+            "### Testing & Build\n"
+            "- Python: `python3` (not `python`)\n"
+            "- pytest: `python3 -m pytest`\n"
+            "- Use `&&` for command chaining\n"
+        )
+    else:  # Linux
+        return header + (
+            "- **Path separator**: `/` (forward slash)\n"
+            "- **Line ending**: LF\n\n"
+            "### Command Reference (use ONLY these for this OS)\n\n"
+            "| Task | Command |\n"
+            "|------|---------|\n"
+            "| Delete file | `rm -f <path>` |\n"
+            "| Delete directory | `rm -rf <path>` |\n"
+            "| Copy file | `cp <src> <dst>` |\n"
+            "| Move file | `mv <src> <dst>` |\n"
+            "| List files | `ls -la` |\n"
+            '| Set env variable | `export VAR="value"` |\n'
+            "| Chain commands | `cmd1 && cmd2` |\n"
+            "| Run script | `bash script.sh` or `./script.sh` |\n"
+            "| Null device | `/dev/null` |\n\n"
+            "### Docker on Linux\n"
+            '- Volume mounts: `-v "$(pwd):/app"`\n'
+            "- Container shell: `/bin/bash` or `/bin/sh`\n"
+            "- May need `sudo` for Docker commands (unless user is in docker group)\n"
+            "- Native Docker Engine — no Docker Desktop needed\n\n"
+            "### Testing & Build\n"
+            "- Python: `python3` (not `python` on most distros)\n"
+            "- pytest: `python3 -m pytest`\n"
+            "- Use `&&` for command chaining\n"
+        )
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # INIT
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -335,6 +503,13 @@ def cmd_init(args: argparse.Namespace) -> None:
     specs_dir = adelie_dir / "specs"
     specs_dir.mkdir(parents=True, exist_ok=True)
 
+    # ── Detect OS ─────────────────────────────────────────────────────
+    os_info = _detect_os()
+    console.print(
+        f"[green]  +[/green] OS detected: [bold]{os_info['os_name']} {os_info['release']}[/bold] "
+        f"({os_info['machine']}, {os_info['shell']})"
+    )
+
     # ── Create config ────────────────────────────────────────────────────
     default_config = {
         "loop_interval": 30,
@@ -356,9 +531,32 @@ def cmd_init(args: argparse.Namespace) -> None:
             "detected_at": datetime.now().isoformat(timespec="seconds"),
         }
 
+    # Save OS info to config
+    default_config["os"] = {
+        "system": os_info["system"],
+        "os_name": os_info["os_name"],
+        "release": os_info["release"],
+        "machine": os_info["machine"],
+        "shell": os_info["shell"],
+        "detected_at": datetime.now().isoformat(timespec="seconds"),
+    }
+
     config_path = adelie_dir / "config.json"
     if not config_path.exists() or args.force:
         config_path.write_text(json.dumps(default_config, indent=2, ensure_ascii=False), encoding="utf-8")
+
+    # ── Generate context.md with OS info ──────────────────────────────
+    context_file = adelie_dir / "context.md"
+    os_context = _generate_os_context(os_info)
+    if not context_file.exists() or args.force:
+        context_file.write_text(os_context, encoding="utf-8")
+        console.print(f"[green]  +[/green] Generated context.md (OS-specific prompts)")
+    else:
+        # Append/update OS section if context.md already exists
+        existing = context_file.read_text(encoding="utf-8")
+        if "## System Environment" not in existing:
+            context_file.write_text(existing.rstrip() + "\n\n" + os_context, encoding="utf-8")
+            console.print(f"[green]  +[/green] Updated context.md with OS info")
 
     # ── Create .env template ─────────────────────────────────────────
     env_file = adelie_dir / ".env"

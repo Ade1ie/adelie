@@ -286,6 +286,14 @@ class ThreadingDashboardHTTPServer(socketserver.ThreadingMixIn, HTTPServer):
     daemon_threads = True
     allow_reuse_address = True
 
+    def handle_error(self, request, client_address):
+        """Silently ignore client-side disconnects (common on Windows)."""
+        import sys
+        exc = sys.exc_info()[1]
+        if isinstance(exc, (ConnectionAbortedError, ConnectionResetError, BrokenPipeError)):
+            return  # client closed connection early — nothing to do
+        super().handle_error(request, client_address)
+
 
 # ── Dashboard Server ─────────────────────────────────────────────────────────
 

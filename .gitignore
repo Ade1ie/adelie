@@ -47,3 +47,8 @@ workspace/
 
 # for the code ref
 gemini-cli-main/adelie-test-01/
+
+
+
+# for adlie test Model:gpt-oss-120b
+adelie_test/*

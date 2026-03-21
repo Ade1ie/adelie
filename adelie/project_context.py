@@ -13,6 +13,7 @@ Provides:
 from __future__ import annotations
 
 import os
+import platform
 from datetime import datetime
 from pathlib import Path
 from typing import NamedTuple
@@ -135,7 +136,8 @@ def get_tree_summary() -> str:
     header = (
         f"📁 Project: {PROJECT_ROOT.name} | "
         f"{len(files)} files ({code_count} code, {config_count} config) | "
-        f"{_format_size(total_size)} total\n"
+        f"{_format_size(total_size)} total | "
+        f"{get_os_info()}\n"
     )
 
     truncated = ""
@@ -194,3 +196,22 @@ def _format_size(size: int) -> str:
         return f"{size / 1024:.1f}KB"
     else:
         return f"{size / (1024 * 1024):.1f}MB"
+
+
+def get_os_info() -> str:
+    """Return a one-line OS summary string for context injection."""
+    system = platform.system()
+    machine = platform.machine()
+    if system == "Darwin":
+        os_name = "macOS"
+        try:
+            ver = platform.mac_ver()[0]
+            if ver:
+                os_name = f"macOS {ver}"
+        except Exception:
+            pass
+    elif system == "Windows":
+        os_name = f"Windows {platform.release()}"
+    else:
+        os_name = f"Linux {platform.release()}"
+    return f"OS: {os_name} / {machine}"
