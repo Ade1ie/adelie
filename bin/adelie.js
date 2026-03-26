@@ -67,15 +67,15 @@ function ensureVenv() {
 
 ensureVenv();
 
-const child = spawn(PYTHON_BIN, [CLI_PY, ...process.argv.slice(2)], {
-  cwd: process.cwd(),
+// Run adelie as a module so Python adds PKG_ROOT to sys.path automatically.
+// ADELIE_CWD preserves the user's actual working directory for workspace detection.
+const child = spawn(PYTHON_BIN, ["-m", "adelie.cli", ...process.argv.slice(2)], {
+  cwd: PKG_ROOT,
   stdio: "inherit",
   env: {
     ...process.env,
     ADELIE_PKG_ROOT: PKG_ROOT,
     ADELIE_CWD: process.cwd(),
-    // Ensure 'adelie' package is importable regardless of install method
-    PYTHONPATH: PKG_ROOT + (process.env.PYTHONPATH ? path.delimiter + process.env.PYTHONPATH : ""),
   },
 });
 
