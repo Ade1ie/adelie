@@ -84,7 +84,13 @@ def cmd_init(args) -> None:
     """Initialize a new Adelie workspace."""
     from adelie import registry
 
-    target = Path(args.directory).resolve()
+    # Resolve relative to user's actual CWD (ADELIE_CWD), not the Python process
+    # cwd (which is set to PKG_ROOT so that 'from adelie import ...' works).
+    import os
+    user_cwd = Path(os.environ.get("ADELIE_CWD", os.getcwd())).resolve()
+    raw_dir = args.directory if args.directory != "." else str(user_cwd)
+    target = (user_cwd / raw_dir).resolve() if not Path(raw_dir).is_absolute() else Path(raw_dir).resolve()
+
     adelie_dir = target / ".adelie"
 
     if adelie_dir.exists() and not args.force:
