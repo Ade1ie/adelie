@@ -38,6 +38,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: check-version
     if: needs.check-version.outputs.version_changed == 'true'
+    permissions:
+      contents: write   # Required to create GitHub Releases
     steps:
       - name: Checkout
         uses: actions/checkout@v4
