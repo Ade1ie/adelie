@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.2.7] - 2026-03-26
+
+### Added
+- **ASCII Penguin splash screen**: Replaced the plain version/LLM info panel with a Braille-art Adelie penguin rendered alongside version info in a neofetch-style layout using Rich `Columns` + `Padding`. Appears when running `adelie` with no arguments.
+
+### Changed
+- **`__version__` hardcoded**: `adelie/__init__.py` now sets `__version__ = "0.2.7"` as a static string for reliability; dynamic `_get_version()` from `package.json` is retained but no longer used as default.
+- **`docs/adelie.rb` updated**: Homebrew formula URL bumped to `adelie-ai-0.2.7.tgz` and sha256 updated with the value from npm publish.
+
+### Fixed
+- **`install.sh` macOS/POSIX compatibility**: Replaced `grep -oP` (Perl-regex, GNU only) with `grep -oE` (POSIX ERE) for Python and Node.js version parsing — fixes installation failures on macOS where BSD grep does not support `-P`.
+- **`.gitignore` cleanup**: Corrected test-project ignore patterns (`adelie-test-01/`, `adelie_test/`, `gemini-cli-main/`) that were previously misaligned.
+
 ## [0.2.6] - 2026-03-22
 
 ### Added

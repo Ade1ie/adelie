@@ -67,7 +67,7 @@ info "Detected: ${BOLD}${OS_NAME}${RESET} (${ARCH})"
 PYTHON_CMD=""
 for cmd in python3 python; do
   if command -v "$cmd" &>/dev/null; then
-    ver=$("$cmd" --version 2>&1 | grep -oP '\d+\.\d+' | head -1)
+    ver=$("$cmd" --version 2>&1 | grep -oE '[0-9]+\.[0-9]+' | head -1)
     major=$(echo "$ver" | cut -d. -f1)
     minor=$(echo "$ver" | cut -d. -f2)
     if [ "$major" -ge 3 ] && [ "$minor" -ge 10 ]; then
@@ -122,7 +122,7 @@ if ! command -v node &>/dev/null; then
   exit 1
 fi
 
-NODE_VER=$(node --version | grep -oP '\d+' | head -1)
+NODE_VER=$(node --version | grep -oE '[0-9]+' | head -1)
 if [ "$NODE_VER" -lt 16 ]; then
   die "Node.js 16+ required, found: $(node --version)"
 fi

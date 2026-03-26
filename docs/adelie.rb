@@ -9,8 +9,8 @@
 class Adelie < Formula
   desc "Autonomous AI Orchestration System — 10 agents, 6-phase lifecycle"
   homepage "https://github.com/Ade1ie/adelie"
-  url "https://registry.npmjs.org/adelie-ai/-/adelie-ai-0.2.0.tgz"
-  sha256 ""  # TODO: Update with actual sha256 after npm publish
+  url "https://registry.npmjs.org/adelie-ai/-/adelie-ai-0.2.7.tgz"
+  sha256 "db595e170087222d9dc1e3e9d4c269f0e6f1ac93"  # shasum from npm publish
   license "MIT"
 
   depends_on "node"
