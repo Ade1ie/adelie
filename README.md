@@ -6,14 +6,14 @@
 
 <p align="center">
   <strong>Autonomous AI Orchestration System</strong><br/>
-  <sub>10 specialized agents · 6-phase lifecycle · zero human intervention</sub>
+  <sub>13 specialized agents · 6-phase lifecycle · zero human intervention</sub>
 </p>
 
 <p align="center">
   <a href="https://www.npmjs.com/package/adelie-ai"><img src="https://img.shields.io/npm/v/adelie-ai?style=flat-square&logo=npm&color=CB3837" alt="npm version" /></a>
   <img src="https://img.shields.io/badge/python-3.10+-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python" />
   <img src="https://img.shields.io/badge/LLM-Gemini%20│%20Ollama-FF6F00?style=flat-square" alt="LLM" />
-  <img src="https://img.shields.io/badge/tests-197%20passing-2EA043?style=flat-square" alt="Tests" />
+  <img src="https://img.shields.io/badge/tests-636%20passing-2EA043?style=flat-square" alt="Tests" />
   <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="License" /></a>
 </p>
 
@@ -23,7 +23,8 @@
   <a href="#architecture">Architecture</a>&ensp;·&ensp;
   <a href="#cli">CLI</a>&ensp;·&ensp;
   <a href="#dashboard">Dashboard</a>&ensp;·&ensp;
-  <a href="#configuration">Configuration</a>
+  <a href="https://ade1ie.github.io/adelie/">Docs</a>&ensp;·&ensp;
+  <a href="https://github.com/Ade1ie/adelie/blob/main/CHANGELOG.md">Changelog</a>
 </p>
 
 ---
@@ -33,8 +34,8 @@
 Adelie is an autonomous AI orchestrator that plans, codes, reviews, tests, deploys, and evolves software projects through a coordinated multi-agent loop. It ships as a single CLI (`npm install -g adelie-ai`) and requires only an LLM provider — no cloud backend, no account.
 
 ```
-    (o_    Adelie v0.2.1
-    //\    ollama · deepseek-v3.1:671b-cloud
+    (o_    Adelie v0.2.12
+    //\    gemini · gemini-2.0-flash
     V_/_   Phase: mid_2
 ```
 
@@ -49,9 +50,25 @@ Adelie is an autonomous AI orchestrator that plans, codes, reviews, tests, deplo
 7. **Tester** runs tests and reports failures
 8. **Runner** builds, installs, deploys
 9. **Monitor** watches system health
-10. **Phase gates** decide when to advance the project lifecycle
+10. **Analyst** evaluates trends and growth opportunities
+11. **Inform** generates human-readable project status reports
+12. **Phase gates** decide when to advance the project lifecycle
 
-The loop runs continuously at a configurable interval (default 30 s), or once with `adelie run once`.
+The loop runs continuously at a configurable interval (default 30 s), or once with `adelie run --once`.
+
+---
+
+## What's New in v0.2.12
+
+🔒 **Security Hardening** — Shell injection prevention (`&`, `>` blocked), path traversal protection via `Path.resolve()`, staging race condition locks.
+
+🧵 **Thread Safety** — `_usage_lock` protects global token counters during parallel agent execution.
+
+🪟 **Windows Stability** — Fixed `python3` Microsoft Store stub, venv `activate.bat` wrapper, `cmd /c` resolver, cross-platform path handling.
+
+📋 **Changelog** — [Full changelog](https://ade1ie.github.io/adelie/#changelog) now on the docs site with interactive expand/collapse.
+
+> See [CHANGELOG.md](./CHANGELOG.md) for complete release history.
 
 ---
 
@@ -98,16 +115,17 @@ brew install adelie
 git clone https://github.com/Ade1ie/adelie.git
 cd adelie
 pip install -r requirements.txt
-python adelie/cli.py --version
+python -c "from adelie.cli import main; main()"
 ```
 
 ### Update
 
 ```bash
-# npm
-npm install -g adelie-ai@latest
+# Built-in update checker
+adelie --update
 
-# curl / PowerShell — re-run the install command above
+# or manual
+npm install -g adelie-ai@latest
 
 # Homebrew
 brew upgrade adelie
@@ -136,7 +154,10 @@ adelie config --provider ollama --model gemma3:12b
 adelie run --goal "Build a REST API for task management"
 
 # Single cycle
-adelie run once --goal "Analyze and document the codebase"
+adelie run --once --goal "Analyze and document the codebase"
+
+# Resume a saved workspace
+adelie run ws 1
 ```
 
 The real-time **dashboard** opens automatically at **http://localhost:5042**.
@@ -157,8 +178,9 @@ The real-time **dashboard** opens automatically at **http://localhost:5042**.
 | **Tester** | Executes tests, collects failures, feeds back to coder | After review |
 | **Runner** | Installs deps, builds, deploys (whitelisted commands) | Mid-phase + |
 | **Monitor** | System health, resource checks, service restarts | Periodic |
-| **Analyst** | Trend analysis, insights, KB synthesis | Periodic |
+| **Analyst** | Trend analysis, market insights, KB synthesis | Periodic |
 | **Research** | Web search → KB for external knowledge | On demand |
+| **Inform** | Human-readable project reports and status summaries | On demand |
 
 ### 6-Phase Lifecycle
 
@@ -178,6 +200,16 @@ The Coder Manager dispatches tasks across three dependency layers:
 
 Failed layers trigger targeted retries with reviewer feedback.
 
+### Security
+
+Adelie enforces multiple security layers:
+
+- **Shell injection prevention** — `BLOCKED_CHARS` filter blocks `&`, `>`, `|`, `;`, backticks, and other shell metacharacters in all subprocess commands
+- **Path traversal protection** — `Path.resolve()` verification ensures generated files stay within the staging directory
+- **Staging isolation** — Code is written to `.adelie/staging/` first, verified with `py_compile` / `node --check`, then promoted to project root
+- **Thread-safe operations** — `_usage_lock` and `_staging_lock` prevent race conditions during parallel agent execution
+- **Whitelisted commands** — Runner and Tester only execute pre-approved command patterns
+
 ---
 
 ## Architecture
@@ -192,7 +224,7 @@ Failed layers trigger targeted retries with reviewer feedback.
 
 Adelie serves a real-time monitoring UI at **`http://localhost:5042`** (auto-starts with `adelie run`).
 
-- **Agent grid** — live status of all 10 agents (idle / running / done / error)
+- **Agent grid** — live status of all 13 agents (idle / running / done / error)
 - **Log stream** — real-time SSE-powered log feed with category filtering
 - **Cycle metrics** — tokens, LLM calls, files written, test results, review scores
 - **Phase timeline** — visual progress through the 6-phase lifecycle
@@ -211,6 +243,7 @@ Built with zero external dependencies — Python `http.server` + SSE + embedded 
 
 ```bash
 adelie --version                  # Show version
+adelie --update                   # Check for updates
 adelie help                       # Full command reference
 ```
 
@@ -220,13 +253,14 @@ adelie help                       # Full command reference
 adelie init [dir]                 # Initialize .adelie workspace
 adelie ws                         # List all workspaces
 adelie ws remove <N>              # Remove workspace
+adelie scan                       # Scan existing codebase → KB
 ```
 
 ### Execution
 
 ```bash
 adelie run --goal "…"             # Start continuous loop
-adelie run once --goal "…"        # Single cycle
+adelie run --once --goal "…"      # Single cycle
 adelie run ws <N>                 # Resume workspace #N
 ```
 
@@ -235,9 +269,9 @@ adelie run ws <N>                 # Resume workspace #N
 ```bash
 adelie config                     # Show current config
 adelie config --provider ollama   # Switch LLM provider
-adelie config --model gpt-4o     # Set model
+adelie config --model gemma3:12b  # Set model
 adelie config --api-key KEY       # Set Gemini API key
-adelie config --ollama-url URL    # Set Ollama server URL
+adelie config --plan-mode true    # Enable Plan Mode (human approval)
 ```
 
 ### Settings
@@ -260,6 +294,7 @@ adelie inform                     # AI-generated project report
 adelie phase                      # Show current phase
 adelie phase set <phase>          # Set phase manually
 adelie metrics                    # Cycle metrics & history
+adelie metrics --agents           # Per-agent token usage
 ```
 
 ### Knowledge Base & Project
@@ -276,6 +311,15 @@ adelie spec load <file>           # Load spec (MD/PDF/DOCX) into KB
 adelie git                        # Git status & recent commits
 ```
 
+### Customization
+
+```bash
+adelie prompts                    # List agent system prompts
+adelie prompts export             # Export prompts for editing
+adelie tools                      # List registered tools
+adelie commands                   # List custom commands
+```
+
 ### Integrations
 
 ```bash
@@ -285,6 +329,24 @@ adelie ollama list                # List Ollama models
 adelie ollama pull <model>        # Download model
 adelie ollama run [model]         # Interactive chat
 ```
+
+---
+
+## Plan Mode
+
+Enable Plan Mode for human-in-the-loop control:
+
+```bash
+adelie config --plan-mode true
+```
+
+When enabled, the Expert AI generates a **plan** before executing code changes. You can review, approve, or reject from the interactive REPL:
+
+| Command | Action |
+|:--|:--|
+| `/plan` | View pending plan |
+| `/approve` | Execute the plan |
+| `/reject [reason]` | Reject and provide feedback |
 
 ---
 
@@ -352,13 +414,15 @@ Use functional components with TypeScript props…
 | 📊 **Dashboard** | Real-time web UI with SSE streaming on port 5042 |
 | 🔄 **Loop Detector** | 5 stuck-pattern types with escalating interventions |
 | ⚡ **Scheduler** | Per-agent frequency control with cooldown/priority |
+| 🔒 **Security** | Shell injection prevention, path traversal protection, staging isolation |
+| 📋 **Plan Mode** | Human-in-the-loop approval for code changes |
 
 ---
 
 ## Testing
 
 ```bash
-python -m pytest tests/ -v    # 197 tests
+python -m pytest tests/ -v    # 636 tests
 ```
 
 ---
@@ -368,13 +432,20 @@ python -m pytest tests/ -v    # 197 tests
 ```
 adelie/
 ├── orchestrator.py          # Main loop — state machine + phase gates
-├── cli.py                   # All CLI commands
+├── commands/                # CLI command modules
+│   ├── workspace.py         #   init, ws
+│   ├── run.py               #   run, run once, run ws
+│   ├── config.py            #   config, settings
+│   ├── monitoring.py        #   status, phase, metrics, inform
+│   ├── knowledge.py         #   kb, feedback, goal, research, spec, scan
+│   └── integrations.py      #   ollama, telegram, git, tools, prompts
+├── cli.py                   # CLI entry point + argparse routing
 ├── config.py                # Configuration & env loading
 ├── llm_client.py            # LLM abstraction (Gemini + Ollama + fallback)
 ├── interactive.py           # REPL + dashboard integration
 ├── dashboard.py             # Real-time web server (HTTP + SSE)
 ├── dashboard_html.py        # Embedded dashboard UI template
-├── agents/                  # 10 specialized AI agents
+├── agents/                  # 12 specialized AI agents
 │   ├── writer_ai.py         #   Knowledge Base curator
 │   ├── expert_ai.py         #   Strategic decision maker
 │   ├── coder_ai.py          #   Code generator
@@ -385,6 +456,7 @@ adelie/
 │   ├── monitor_ai.py        #   Health monitor
 │   ├── analyst_ai.py        #   Trend analyzer
 │   ├── research_ai.py       #   Web researcher
+│   ├── inform_ai.py         #   Status report generator
 │   └── scanner_ai.py        #   Initial codebase scanner
 ├── kb/                      # Knowledge Base (retriever + embeddings)
 ├── channels/                # Multichannel providers (Discord, Slack)
@@ -393,12 +465,13 @@ adelie/
 ├── sandbox.py               # Docker/Seatbelt isolation
 ├── gateway.py               # REST API gateway
 ├── skill_manager.py         # Skill registry
+├── env_strategy.py          # Runtime environment detection
+├── plan_mode.py             # Plan Mode (human approval)
 ├── loop_detector.py         # Stuck-pattern detection
 ├── scheduler.py             # Per-agent scheduling
 ├── phases.py                # Lifecycle phase definitions
 ├── hooks.py                 # Event-driven plugin system
-├── process_supervisor.py    # Subprocess management
-└── env_strategy.py          # Runtime environment detection
+└── process_supervisor.py    # Subprocess management
 ```
 
 ---
@@ -415,6 +488,15 @@ python -m pytest tests/ -v   # Ensure all tests pass
 1. Fork → branch → implement → test → PR
 2. Follow existing code style and patterns
 3. Add tests for new features
+
+---
+
+## Links
+
+- 📖 [Documentation](https://ade1ie.github.io/adelie/) — Full command reference & guides
+- 📋 [Changelog](https://github.com/Ade1ie/adelie/blob/main/CHANGELOG.md) — Release history
+- 📦 [npm](https://www.npmjs.com/package/adelie-ai) — `npm install -g adelie-ai`
+- 🐛 [Issues](https://github.com/Ade1ie/adelie/issues) — Bug reports
 
 ---
 
