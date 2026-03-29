@@ -77,7 +77,7 @@ def list_categories() -> dict[str, int]:
     """Return a dict of {category_name: file_count} for all KB categories."""
     ensure_workspace()
     return {
-        cat: len(list((WORKSPACE_PATH / cat).glob("*")))
+        cat: len(list((WORKSPACE_PATH / cat).glob("*.md")))
         for cat in KB_CATEGORIES
     }
 

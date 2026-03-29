@@ -16,6 +16,7 @@ import json
 from typing import Callable, Optional
 import signal
 import sys
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
@@ -93,6 +94,10 @@ class Orchestrator:
 
         # Process supervisor for spawned commands
         self.supervisor = ProcessSupervisor(max_concurrent=5)
+
+        # Lock to protect staging directory operations from race conditions
+        # between the tester thread (Phase 3) and the main orchestrator thread.
+        self._staging_lock = threading.Lock()
 
 
 
@@ -390,8 +395,15 @@ class Orchestrator:
         Verify staged files with lightweight syntax checks before promotion.
         Returns (passed, failed) file lists.
         """
+        import shutil
         import subprocess
         staging_root = ADELIE_ROOT / "staging"
+        # On Windows, 'python3' may resolve to the Microsoft Store stub
+        # (WindowsApps/python3.EXE) which doesn't work. Prefer sys.executable.
+        if sys.platform == "win32":
+            python_bin = sys.executable
+        else:
+            python_bin = shutil.which("python3") or shutil.which("python") or sys.executable
         passed: list[dict] = []
         failed: list[dict] = []
 
@@ -410,7 +422,7 @@ class Orchestrator:
             if ext == ".py":
                 try:
                     result = subprocess.run(
-                        ["python3", "-m", "py_compile", str(staged_path)],
+                        [python_bin, "-m", "py_compile", str(staged_path)],
                         capture_output=True, text=True, timeout=10,
                     )
                     if result.returncode != 0:
@@ -931,8 +943,12 @@ class Orchestrator:
                         score = review.get("overall_score", 5)
                         self._review_score_history.append(score)
 
-                        if review.get("approved", True) or retry >= MAX_REVIEW_RETRIES:
+                        if review.get("approved", True):
                             reviewer_approved = True
+                            break
+                        if retry >= MAX_REVIEW_RETRIES:
+                            # Retry limit reached — use actual review result (do NOT force approve)
+                            reviewer_approved = False
                             break
 
                         # Feed review back to coder for retry
@@ -988,8 +1004,9 @@ class Orchestrator:
 
         # ── Promote staged files to project (after review) ────────────────
         if all_written_files and reviewer_approved:
-            self._promote_staged_files(all_written_files)
-            self._cleanup_staging()
+            with self._staging_lock:
+                self._promote_staged_files(all_written_files)
+                self._cleanup_staging()
 
             # ── Git auto-commit (MID_1+) ──────────────────────────────────────
             if self.phase in ("mid_1", "mid_2", "late", "evolve"):
@@ -1080,8 +1097,9 @@ class Orchestrator:
                                     new_files = self._collect_staged_files(fix_start_time)
                                     if new_files:
                                         _files = new_files
-                                    self._promote_staged_files(_files)
-                                    self._cleanup_staging()
+                                    with self._staging_lock:
+                                        self._promote_staged_files(_files)
+                                        self._cleanup_staging()
                             except Exception as ce:
                                 console.print(f"[red]❌ Coder fix error: {ce}[/red]")
                                 break

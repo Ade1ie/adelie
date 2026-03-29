@@ -20,8 +20,10 @@ Strategy selection follows the project phase:
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
+import sys
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -124,6 +126,7 @@ def detect_env(project_root: Path) -> EnvProfile:
     # ── Python environments ───────────────────────────────────────────────
 
     # Standard venv
+    _is_win = sys.platform == "win32"
     for venv_dir in [".venv", "venv"]:
         venv_path = project_root / venv_dir
         if venv_path.is_dir():
@@ -133,7 +136,12 @@ def detect_env(project_root: Path) -> EnvProfile:
             if bin_dir.exists():
                 profile.python_bin = str(bin_dir / "python")
                 profile.pip_bin = str(bin_dir / "pip")
-                profile.shell_wrapper = f"source {venv_path / 'bin' / 'activate'}"
+                # Windows: use activate.bat; Unix: source activate
+                if _is_win:
+                    activate_script = bin_dir / "activate.bat"
+                    profile.shell_wrapper = f"{activate_script} &&"
+                else:
+                    profile.shell_wrapper = f"source {bin_dir / 'activate'}"
                 profile.env_type = "venv"
                 detected.append("venv")
                 break
@@ -164,7 +172,7 @@ def detect_env(project_root: Path) -> EnvProfile:
     node_modules_bin = project_root / "node_modules" / ".bin"
     if node_modules_bin.is_dir():
         profile.node_bin = str(node_modules_bin / "node") if (node_modules_bin / "node").exists() else None
-        profile.npm_prefix = str(node_modules_bin) + "/"
+        profile.npm_prefix = str(node_modules_bin) + os.sep
         if profile.env_type == "system":
             profile.env_type = "npm"
         detected.append("npm")
@@ -475,11 +483,16 @@ def _wrap_resolver(cmd: str, profile: EnvProfile) -> str:
     elif profile.env_type == "poetry":
         return f"poetry run {cmd}"
 
-    # For standard venv: use bash -c with activation
-    if profile.shell_wrapper and "source" in profile.shell_wrapper:
-        # Escape single quotes in cmd
-        escaped_cmd = cmd.replace("'", "'\\''")
-        return f"bash -c '{profile.shell_wrapper} && {escaped_cmd}'"
+    # For standard venv: wrap with activation
+    if profile.shell_wrapper:
+        if sys.platform == "win32" and profile.shell_wrapper.endswith("&&"):
+            # Windows: cmd /c "activate.bat && command"
+            escaped_cmd = cmd.replace('"', '\\"')
+            return f'cmd /c "{profile.shell_wrapper} {escaped_cmd}"'
+        elif "source" in profile.shell_wrapper:
+            # Unix: bash -c "source activate && command"
+            escaped_cmd = cmd.replace("'", "'\\''")
+            return f"bash -c '{profile.shell_wrapper} && {escaped_cmd}'"
 
     # Fallback to direct if no resolver available
     return _wrap_direct(cmd, profile)

@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import json
+import os
+import sys
 from pathlib import Path
 from unittest.mock import patch
 
@@ -17,11 +19,17 @@ def empty_project(tmp_path):
 @pytest.fixture
 def venv_project(tmp_path):
     """Project with a Python venv."""
-    venv_bin = tmp_path / ".venv" / "bin"
+    # Use Scripts/ on Windows, bin/ on Unix to match real Python behavior
+    if sys.platform == "win32":
+        venv_bin = tmp_path / ".venv" / "Scripts"
+    else:
+        venv_bin = tmp_path / ".venv" / "bin"
     venv_bin.mkdir(parents=True)
     (venv_bin / "python").write_text("#!/usr/bin/env python3", encoding="utf-8")
     (venv_bin / "pip").write_text("#!/usr/bin/env pip", encoding="utf-8")
     (venv_bin / "activate").write_text("# activation script", encoding="utf-8")
+    if sys.platform == "win32":
+        (venv_bin / "activate.bat").write_text("@echo off", encoding="utf-8")
     return tmp_path
 
 
@@ -47,11 +55,16 @@ def docker_project(tmp_path):
 def full_project(tmp_path):
     """Project with venv + npm + Docker."""
     # venv
-    venv_bin = tmp_path / ".venv" / "bin"
+    if sys.platform == "win32":
+        venv_bin = tmp_path / ".venv" / "Scripts"
+    else:
+        venv_bin = tmp_path / ".venv" / "bin"
     venv_bin.mkdir(parents=True)
     (venv_bin / "python").write_text("#!/usr/bin/env python3", encoding="utf-8")
     (venv_bin / "pip").write_text("#!/usr/bin/env pip", encoding="utf-8")
     (venv_bin / "activate").write_text("# activation script", encoding="utf-8")
+    if sys.platform == "win32":
+        (venv_bin / "activate.bat").write_text("@echo off", encoding="utf-8")
     # npm
     bin_dir = tmp_path / "node_modules" / ".bin"
     bin_dir.mkdir(parents=True)
@@ -79,7 +92,8 @@ class TestDetectEnv:
         assert profile.env_type == "venv"
         assert "venv" in profile.detected_envs
         assert profile.python_bin is not None
-        assert ".venv/bin/python" in profile.python_bin
+        # Cross-platform: check path components, not literal separators
+        assert ".venv" in profile.python_bin and "python" in profile.python_bin
         assert profile.pip_bin is not None
         assert profile.shell_wrapper is not None
         assert "activate" in profile.shell_wrapper
@@ -89,7 +103,7 @@ class TestDetectEnv:
         profile = detect_env(npm_project)
         assert "npm" in profile.detected_envs
         assert profile.npm_prefix is not None
-        assert "node_modules/.bin/" in profile.npm_prefix
+        assert "node_modules" in profile.npm_prefix and ".bin" in profile.npm_prefix
 
     def test_detects_docker(self, docker_project):
         from adelie.env_strategy import detect_env
@@ -184,14 +198,14 @@ class TestWrapCommand:
         from adelie.env_strategy import detect_env, wrap_command, EnvStrategy
         profile = detect_env(venv_project)
         result = wrap_command("python test.py", profile, EnvStrategy.DIRECT)
-        assert ".venv/bin/python" in result
+        assert ".venv" in result and "python" in result
         assert "test.py" in result
 
     def test_direct_replaces_pip_binary(self, venv_project):
         from adelie.env_strategy import detect_env, wrap_command, EnvStrategy
         profile = detect_env(venv_project)
         result = wrap_command("pip install flask", profile, EnvStrategy.DIRECT)
-        assert ".venv/bin/pip" in result
+        assert ".venv" in result and "pip" in result
         assert "install flask" in result
 
     def test_direct_leaves_unknown_commands(self, venv_project):
@@ -204,13 +218,17 @@ class TestWrapCommand:
         from adelie.env_strategy import detect_env, wrap_command, EnvStrategy
         profile = detect_env(npm_project)
         result = wrap_command("eslint src/", profile, EnvStrategy.DIRECT)
-        assert "node_modules/.bin/eslint" in result
+        assert "node_modules" in result and ".bin" in result and "eslint" in result
 
     def test_resolver_wraps_with_activation(self, venv_project):
         from adelie.env_strategy import detect_env, wrap_command, EnvStrategy
         profile = detect_env(venv_project)
         result = wrap_command("pip install flask", profile, EnvStrategy.RESOLVER)
-        assert "bash -c" in result
+        # Windows: cmd /c, Unix: bash -c
+        if sys.platform == "win32":
+            assert "cmd /c" in result
+        else:
+            assert "bash -c" in result
         assert "activate" in result
         assert "pip install flask" in result
 

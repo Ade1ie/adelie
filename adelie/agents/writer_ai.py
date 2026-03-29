@@ -301,13 +301,17 @@ Remember: output ONLY a valid JSON array.
                 ratio = min(len_existing, len_new) / max(len_existing, len_new)
                 if ratio > 0.90:
                     # Check first 200 chars — if very similar, skip
-                    common_start = 0
-                    for a, b in zip(existing_body[:200], new_body[:200]):
-                        if a == b:
-                            common_start += 1
-                    if common_start / min(200, len(existing_body[:200])) > 0.7:
-                        console.print(f"[dim]  ⏭  Skipped {cat}/{filename} (similar content)[/dim]")
-                        continue
+                    compare_len = min(200, len(existing_body), len(new_body))
+                    if compare_len < 20:
+                        pass  # Too short to compare meaningfully
+                    else:
+                        common_start = 0
+                        for a, b in zip(existing_body[:compare_len], new_body[:compare_len]):
+                            if a == b:
+                                common_start += 1
+                        if common_start / compare_len > 0.7:
+                            console.print(f"[dim]  ⏭  Skipped {cat}/{filename} (similar content)[/dim]")
+                            continue
 
         # Prepend a frontmatter header for human readability
         header = (

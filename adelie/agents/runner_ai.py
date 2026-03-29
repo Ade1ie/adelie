@@ -57,7 +57,7 @@ DEPLOY_COMMANDS = RUN_COMMANDS + [
 BLOCKED_FLAGS = {"-c", "--eval", "eval", "exec", "--exec", "-e"}
 
 # Dangerous shell metacharacters
-BLOCKED_CHARS = {";", "|", "&&", "||", "`", "$(", ">>", "<<"}
+BLOCKED_CHARS = {";", "|", "&", "&&", "||", "`", "$(", ">", ">>", "<<"}
 
 EXEC_TIMEOUT_BUILD = 120
 EXEC_TIMEOUT_RUN = 10  # Short timeout — we just check if it starts

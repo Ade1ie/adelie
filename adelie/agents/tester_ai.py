@@ -44,7 +44,7 @@ ALLOWED_COMMANDS = [
 BLOCKED_FLAGS = {"-c", "--eval", "eval", "exec", "--exec", "-e"}
 
 # Dangerous shell metacharacters
-BLOCKED_CHARS = {";", "|", "&&", "||", "`", "$(", ">>", "<<"}
+BLOCKED_CHARS = {";", "|", "&", "&&", "||", "`", "$(", ">", ">>", "<<"}
 
 EXEC_TIMEOUT = 60  # seconds
 

@@ -32,6 +32,7 @@ console = Console()
 
 # ── Token usage tracking ─────────────────────────────────────────────────────
 _usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0, "calls": 0}
+_usage_lock = threading.Lock()
 
 # Per-agent usage tracking (agent_name -> {prompt_tokens, completion_tokens, total_tokens, calls, time})
 _agent_usage: dict[str, dict] = {}
@@ -58,17 +59,19 @@ def _get_current_agent() -> str:
 
 def reset_usage() -> None:
     """Reset token counters (call at start of each loop)."""
-    _usage["prompt_tokens"] = 0
-    _usage["completion_tokens"] = 0
-    _usage["total_tokens"] = 0
-    _usage["calls"] = 0
+    with _usage_lock:
+        _usage["prompt_tokens"] = 0
+        _usage["completion_tokens"] = 0
+        _usage["total_tokens"] = 0
+        _usage["calls"] = 0
     with _agent_usage_lock:
         _agent_usage.clear()
 
 
 def get_usage() -> dict:
     """Return current accumulated token usage."""
-    return dict(_usage)
+    with _usage_lock:
+        return dict(_usage)
 
 
 def get_agent_usage() -> dict[str, dict]:
@@ -78,10 +81,11 @@ def get_agent_usage() -> dict[str, dict]:
 
 
 def _record_usage(prompt: int, completion: int) -> None:
-    _usage["prompt_tokens"] += prompt
-    _usage["completion_tokens"] += completion
-    _usage["total_tokens"] += prompt + completion
-    _usage["calls"] += 1
+    with _usage_lock:
+        _usage["prompt_tokens"] += prompt
+        _usage["completion_tokens"] += completion
+        _usage["total_tokens"] += prompt + completion
+        _usage["calls"] += 1
 
     # Also record per-agent
     agent = _get_current_agent()

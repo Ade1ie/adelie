@@ -238,10 +238,18 @@ def run_coder(
         if not filepath or not content:
             continue
 
-        # Sanitize — prevent writing outside workspace
+        # Sanitize — prevent writing outside staging area
+        # Check both Unix absolute paths (/...) and Windows (C:\...)
         if filepath.startswith("/") or ".." in filepath:
             console.print(
                 f"[yellow]⚠️  Skipped unsafe path: {filepath}[/yellow]"
+            )
+            continue
+        # Resolve-based check: ensure the final path is under STAGING_ROOT
+        resolved_out = (STAGING_ROOT / filepath).resolve()
+        if not str(resolved_out).startswith(str(STAGING_ROOT.resolve())):
+            console.print(
+                f"[yellow]⚠️  Skipped path escaping staging: {filepath}[/yellow]"
             )
             continue
 

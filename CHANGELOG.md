@@ -5,6 +5,50 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.2.12] - 2026-03-29
+
+### Fixed
+- **Security: Windows shell injection** — `BLOCKED_CHARS` in `runner_ai.py` and `tester_ai.py` now blocks single `&` and `>` characters. Previously only `&&` was blocked, allowing Windows `cmd.exe` command chaining via `&`.
+- **Thread safety: `_usage` dict** — Added `_usage_lock` to `llm_client.py` protecting global token counter from race conditions during parallel agent execution.
+- **Reviewer approved logic** — Retry limit no longer force-approves rejected code. Previously, `reviewer_approved = True` was set even when the reviewer rejected the code after `MAX_REVIEW_RETRIES`.
+- **Staging race condition** — Added `_staging_lock` to `orchestrator.py` preventing concurrent `_promote_staged_files` / `_cleanup_staging` calls from Tester thread and main thread during Phase 3.
+- **Windows path traversal** — `coder_ai.py` now uses `Path.resolve()` to verify output paths stay within staging root. Catches Windows absolute paths (`C:\...`) that bypassed the old `/`-prefix check.
+- **Windows `python3` stub** — `_verify_staged_files` now uses `sys.executable` on Windows instead of `shutil.which("python3")`, which resolves to the non-functional Microsoft Store stub (`WindowsApps/python3.EXE`).
+- **Windows venv activation** — `env_strategy.py` generates `activate.bat &&` wrapper on Windows instead of `source bin/activate`. Also fixed `_wrap_resolver` to use `cmd /c` on Windows.
+- **npm_prefix path separator** — Uses `os.sep` instead of hardcoded `/` for cross-platform compatibility.
+- **KB `list_categories` glob** — Changed `glob("*")` to `glob("*.md")` so `index.json` and other non-content files are not counted.
+- **Writer AI similarity edge case** — Fixed denominator in content similarity check to use `min(len(a), len(b), 200)` instead of just `len(existing_body[:200])`, preventing false positives when new content is much shorter.
+
+### Changed
+- **Cross-platform test suite** — Updated `test_env_strategy.py` fixtures and assertions to work on both Windows (Scripts/) and Unix (bin/). 6 previously-failing Windows tests now pass.
+
+## [0.2.11] - 2026-03-28
+
+### Fixed
+- **`cmd_init` path resolution** — `adelie init <dir>` now resolves relative to `ADELIE_CWD` (user's actual working directory) instead of `PKG_ROOT` (npm package location). Fixes `init` creating workspaces inside the npm installation directory.
+
+## [0.2.10] - 2026-03-27
+
+### Added
+- **GitHub Pages documentation** — Full command reference site at `https://ade1ie.github.io/adelie/` with dark theme, sidebar navigation, installation guides, and phase timeline visualization.
+
+### Fixed
+- **CLI execution** — `bin/adelie.js` now runs `python -m adelie.cli` instead of direct file execution, ensuring `sys.path` is correctly set for module imports.
+
+## [0.2.9] - 2026-03-27
+
+### Fixed
+- **Module importability** — Added `PYTHONPATH` to `bin/adelie.js` so the `adelie` package is findable when installed via npm global. Fixes `ModuleNotFoundError` on first run.
+
+## [0.2.8] - 2026-03-26
+
+### Added
+- **Auto update checker** — `adelie --update` flag checks npm registry for newer versions and offers to upgrade.
+- **CI/CD pipeline** — GitHub Actions workflow for automatic npm publish on merge to main.
+
+### Changed
+- **CLI refactor** — Split monolithic `cli.py` into `adelie/commands/` package with separate modules for workspace, run, config, monitoring, knowledge, and integrations.
+
 ## [0.2.7] - 2026-03-26
 
 ### Added
