@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.2.14] - 2026-04-09
+
+### Fixed
+- **Testing suite stability** — Fixed test failures caused by `ModuleNotFoundError` for Playwright on environments where it's not installed, and handling for `TimeoutError` in Python 3.9 during parallel execution tests.
+
 ## [0.2.13] - 2026-04-09
 
 ### Fixed
