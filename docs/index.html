@@ -1638,12 +1638,59 @@
 
         <div class="changelog-entry">
           <div class="changelog-header" onclick="this.nextElementSibling.classList.toggle('open');this.querySelector('.changelog-expand').textContent=this.nextElementSibling.classList.contains('open')?'▾':'▸'">
+            <span class="changelog-version">0.2.15</span>
+            <span class="changelog-date">2026-04-09</span>
+            <span class="changelog-tag tag-fix">Fix</span>
+            <span class="changelog-expand">▾</span>
+          </div>
+          <div class="changelog-body open">
+            <h4>🐛 Fixed</h4>
+            <ul>
+              <li><strong>Testing &amp; Sandbox Paths</strong> — Added proper shell-quoting around interpolated directory paths to prevent environment failures when the project directory contains spaces.</li>
+              <li><strong>Configuration Reloading Bug</strong> — Transitioned <code>WORKSPACE_PATH</code> and <code>PROJECT_ROOT</code> direct module imports to dynamic property lookups in agents to correctly reflect CLI context updates.</li>
+              <li><strong>Version Integrity</strong> — Synchronized <code>pyproject.toml</code> and <code>docs/index.html</code> to reflect the current deployment version alongside global builds.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="changelog-entry">
+          <div class="changelog-header" onclick="this.nextElementSibling.classList.toggle('open');this.querySelector('.changelog-expand').textContent=this.nextElementSibling.classList.contains('open')?'▾':'▸'">
+            <span class="changelog-version">0.2.14</span>
+            <span class="changelog-date">2026-04-09</span>
+            <span class="changelog-tag tag-fix">Fix</span>
+            <span class="changelog-expand">▸</span>
+          </div>
+          <div class="changelog-body">
+            <h4>🐛 Fixed</h4>
+            <ul>
+              <li><strong>Testing suite stability</strong> — Fixed test failures caused by <code>ModuleNotFoundError</code> for Playwright, and `TimeoutError` in Python 3.9 during parallel execution.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="changelog-entry">
+          <div class="changelog-header" onclick="this.nextElementSibling.classList.toggle('open');this.querySelector('.changelog-expand').textContent=this.nextElementSibling.classList.contains('open')?'▾':'▸'">
+            <span class="changelog-version">0.2.13</span>
+            <span class="changelog-date">2026-04-09</span>
+            <span class="changelog-tag tag-fix">Fix</span>
+            <span class="changelog-expand">▸</span>
+          </div>
+          <div class="changelog-body">
+            <h4>🐛 Fixed</h4>
+            <ul>
+              <li><strong>Python 3.9 compatibility</strong> — Fixed a SyntaxError in <code>_helpers.py</code> where a backslash was used inside an f-string expression.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="changelog-entry">
+          <div class="changelog-header" onclick="this.nextElementSibling.classList.toggle('open');this.querySelector('.changelog-expand').textContent=this.nextElementSibling.classList.contains('open')?'▾':'▸'">
             <span class="changelog-version">0.2.12</span>
             <span class="changelog-date">2026-03-29</span>
             <span class="changelog-tag tag-security">Security</span>
             <span class="changelog-expand">▸</span>
           </div>
-          <div class="changelog-body open">
+          <div class="changelog-body">
             <h4>🔒 Security &amp; Stability</h4>
             <ul>
               <li><strong>Windows shell injection</strong> — Blocks single <code>&amp;</code> and <code>&gt;</code> in runner/tester command filters</li>
