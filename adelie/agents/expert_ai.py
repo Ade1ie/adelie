@@ -63,6 +63,43 @@ def _get_coder_registry_summary() -> str:
     return "\n".join(lines)
 
 
+def _get_harness_summary() -> str:
+    """Get a summary of the current harness configuration for Expert AI context."""
+    try:
+        from adelie.harness_manager import get_manager
+        hm = get_manager()
+        phases = hm.get_all_phases()
+        dynamic_agents = hm.get_dynamic_agents()
+
+        lines = [
+            f"Current pipeline: {len(phases)} phase(s)",
+            "Phases: " + " → ".join(f"{pid}" for pid, _ in phases),
+        ]
+
+        if dynamic_agents:
+            lines.append(f"Dynamic agents: {len(dynamic_agents)}")
+            for agent in dynamic_agents:
+                perm = agent.get("permissions", {}).get("level", "analyst")
+                lines.append(
+                    f"  - {agent['name']} [{perm}] active in: {', '.join(agent.get('active_in_phases', []))}"
+                )
+        else:
+            lines.append("Dynamic agents: none")
+
+        lines.append("")
+        lines.append(
+            "To modify the pipeline, use action: MODIFY_HARNESS with a harness_payload field containing: "
+            "new_phases (list of phase dicts with id, label, order, max_coder_layer, goal, "
+            "writer_directive, expert_directive, transition_criteria, next_phase), "
+            "new_agents (list of agent configs with name, active_in_phases, prompt_template, "
+            "schedule, permissions), remove_phases (list of phase IDs), remove_agents (list of names)."
+        )
+
+        return "\n".join(lines)
+    except Exception:
+        return "(Harness info unavailable)"
+
+
 def _get_recent_build_errors() -> str:
     """최근 빌드 로그에서 실패 정보 추출."""
     from adelie.config import WORKSPACE_PATH
@@ -306,13 +343,27 @@ def _validate_decision(decision: dict) -> bool:
         return False
     if "action" not in decision:
         return False
-    valid_actions = {"CONTINUE", "RECOVER", "EXPORT", "PAUSE", "NEW_LOGIC", "SHUTDOWN"}
+    valid_actions = {"CONTINUE", "RECOVER", "EXPORT", "PAUSE", "NEW_LOGIC", "SHUTDOWN", "MODIFY_HARNESS"}
     if decision.get("action") not in valid_actions:
         return False
     valid_situations = {"normal", "error", "export", "maintenance", "new_logic"}
     if decision.get("next_situation") and decision["next_situation"] not in valid_situations:
         return False
     return True
+
+
+def _get_production_health_section() -> str:
+    """Get production health context for the Expert AI prompt."""
+    try:
+        from adelie.config import PRODUCTION_BRIDGE_ENABLED
+        if not PRODUCTION_BRIDGE_ENABLED:
+            return ""
+        from adelie.production_bridge import get_production_bridge
+        bridge = get_production_bridge()
+        summary = bridge.get_context_summary()
+        return summary if summary else ""
+    except Exception:
+        return ""
 
 
 def run(
@@ -433,6 +484,10 @@ Total KB files across all categories: {total_kb_files}
 ## Relevant KB Files Loaded for This Situation
 {kb_content}
 
+## Harness Configuration
+{_get_harness_summary()}
+
+{_get_production_health_section()}
 Based on the above and the current PROJECT PHASE, what is your decision?
 {"IMPORTANT: KB has " + str(total_kb_files) + " files — bootstrapping is done. Set next_situation to 'normal' and action to 'CONTINUE'." if total_kb_files > 0 and situation == "new_logic" else ""}
 {intervention_prompt}

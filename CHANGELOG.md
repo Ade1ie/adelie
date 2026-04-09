@@ -4,6 +4,135 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
+## [0.3.0] - 2026-04-09
+
+**Major Release — AI Harness Architecture**
+
+v0.3.0 transforms Adelie from a static pipeline executor into a self-configuring, policy-enforced, production-aware AI harness. This release consolidates v0.2.16–v0.2.20 into a single major version.
+
+### Added
+
+#### 🔧 Meta Harness — Dynamic Pipeline (from v0.2.16)
+- **HarnessManager** (`harness_manager.py`) — Dynamic JSON state machine replaces static 6-phase Enum. Expert AI reconfigures pipeline at runtime via `MODIFY_HARNESS` action.
+- **DynamicAgent** (`agents/dynamic_agent.py`) — Runtime-created agents with 3-tier permissions (observer → analyst → operator).
+- **Snapshot Rollback** — Every harness modification creates automatic backup; failed changes auto-revert.
+
+#### 🛡️ Policy Engine — Declarative Constraints (from v0.2.17)
+- **PolicyEngine** (`policy_engine.py`) — Enforces `.adelie/constraints.yaml` rules. Three types: `pattern` (regex), `ast` (Python AST), `file` (line limits).
+- **AST Checker** (`utils/ast_checker.py`) — Detects `eval()`, `exec()`, wildcard imports, missing docstrings.
+- **PolicyGate** — Blocks staging promotion on violation; forces Coder retry loop.
+
+#### 🧠 Memory Harness — Selective Forgetting (from v0.2.18)
+- **MemoryHarness** (`memory_harness.py`) — Phase-aware KB visibility to prevent context derailment.
+- **Phase Scope Filter** — KB files tagged with `phase_scope` only visible during designated phases.
+- **Archive Manager** — Resolved errors and completed-phase docs auto-archived. Summary Tree preserves minimal awareness.
+
+#### 📡 Production Bridge — CI/CD Feedback Loop (from v0.2.19)
+- **ProductionBridge** (`production_bridge.py`) — Connects to GitHub Actions, Sentry, and custom MCP servers.
+- **SignalCollector + HealthVerdict** — Aggregates signals into `healthy`/`degraded`/`critical` verdict.
+- **Auto-Rollback** — Critical verdict transitions to `LoopState.ERROR` + KB error log + hotfix generation.
+
+#### ⛔ Human Intercept & Monitoring (from v0.2.20)
+- **`/intercept [reason]`** — Immediate mid-cycle stop + ERROR state + KB logging.
+- **`/policy`**, **`/health`**, **`/memory`**, **`/harness`** — Dedicated CLI commands for each feature.
+- **`/status` enhanced** — Full system status with all feature indicators.
+- **Dashboard overhaul** — Intercept button, Production Health panel, Policy Engine panel, Memory Harness panel, Pipeline Visualizer, Feature SSE events.
+
+### Changed
+- **Orchestrator** — Integrated all 5 harness components (HarnessManager, PolicyGate, MemoryHarness, ProductionBridge, Intercept).
+- **Expert AI** — New `MODIFY_HARNESS` action, production health context injection, harness summary in prompt.
+- **Coder/Reviewer AI** — Policy constraint summaries injected into prompts.
+- **KB Retriever** — Phase-aware `query()` and `semantic_query()`.
+- **Context Engine** — Archive summary injection (5% budget).
+- **Cycle Header** — Feature indicators (🛡️ 📡 🧠).
+- **Dashboard** — Complete redesign with feature panels, SSE events, intercept API.
+
+---
+
+## [0.2.20] - 2026-04-09
+
+### Added
+- **`/intercept [reason]`** CLI command — Immediately stops the AI mid-cycle, transitions to `ERROR` state, records reason in KB, and pauses. Unlike `/pause`, takes effect between agents rather than at cycle boundary.
+- **`/policy`** CLI command — Shows Policy Engine status and all loaded constraint rules.
+- **`/health`** CLI command — Shows Production Bridge verdict, active adapters, and recent signals.
+- **`/memory`** CLI command — Shows Memory Harness statistics (active/archived/scoped files).
+- **`/harness`** CLI command — Shows pipeline structure, phase flow, and dynamic agents.
+- **`orchestrator.intercept()`** — Programmatic intercept method for external control.
+- **`orchestrator.get_feature_status()`** — Unified status API for all v0.2.16-0.2.19 features.
+- **Dashboard: Intercept Button** — Emergency ⛔ button in header with confirmation modal, calls `POST /api/intercept`.
+- **Dashboard: Production Health Panel** — Real-time verdict badge (HEALTHY/DEGRADED/CRITICAL) with adapter list.
+- **Dashboard: Policy Engine Panel** — Active rule count and type breakdown.
+- **Dashboard: Memory Harness Panel** — Active/archived/scoped file counters.
+- **Dashboard: Pipeline Visualizer** — Horizontal phase flow with active/completed highlighting.
+- **Dashboard: `features` SSE event** — Pushes feature status on every cycle start.
+- **Dashboard: `/api/features` endpoint** — REST API for feature status.
+- **Dashboard: `POST /api/intercept` endpoint** — REST API for remote intercept.
+
+### Changed
+- **`/status`** — Now shows full system status including Policy Engine, Memory Harness, Production Bridge, and Pipeline info.
+- **Cycle Header** — Enhanced with feature indicators (🛡️ rules, 📡 health, 🧠 memory stats).
+- **Help Text** — Updated with all new commands.
+
+## [0.2.19] - 2026-04-09
+
+### Added
+- **Production Bridge** (`production_bridge.py`) — Connects the AI harness loop to external CI/CD and monitoring services. Collects signals, determines `HealthVerdict` (healthy/degraded/critical), and triggers automatic ERROR rollback + hotfix generation.
+- **GitHub Actions Adapter** — Polls workflow run statuses via REST API or MCP server. Detects CI failures and feeds them back as critical signals.
+- **Sentry Adapter** — Polls error issues via REST API or MCP server. Detects error spikes above configurable threshold.
+- **Custom MCP Adapter** — Discovers MCP tools matching production patterns (monitor, health, status, alert) and polls them automatically.
+- **`PRODUCTION_ALERT` HookEvent** — New hook for external service alerts, enabling custom plugin responses.
+- **40 new tests** (`test_production_bridge.py`) — Data models, all 3 adapters (mocked API), SignalCollector, verdict engine, hook integration.
+
+### Changed
+- **Orchestrator** — Polls Production Bridge at cycle start. Critical verdict → `LoopState.ERROR` + KB error log + hook emission + critical acknowledgment.
+- **Expert AI** — Production health context summary injected into prompt when bridge is active.
+- **Config** — `PRODUCTION_BRIDGE_ENABLED` (default: false), `PRODUCTION_POLL_INTERVAL` (default: 60s).
+
+## [0.2.18] - 2026-04-09
+
+### Added
+- **Memory Harness — Selective Forgetting** (`memory_harness.py`) — Controls KB visibility per phase to prevent context derailment. Three mechanisms: Phase Scope Filter, Archive Manager, and Summary Tree.
+- **Phase Scope Filter** — KB files tagged with `phase_scope` in index.json are only visible during their designated phases. Files without scope remain globally visible (backward compatible).
+- **Archive Manager** — Resolved errors (stale for 3+ cycles) and completed-phase documents are automatically moved to `archive/` directory, removing them from active queries.
+- **Summary Tree** — Archived files get a 1-2 line summary preserved in `archive/summaries.md`, giving agents minimal awareness of past context without loading full documents.
+- **26 new tests** (`test_memory_harness.py`) — Phase groups, scope filtering, auto-tagging, staleness detection, archiving, summary tree, retriever integration.
+
+### Changed
+- **KB Retriever** — `query()` and `semantic_query()` now accept `current_phase` parameter for phase-aware filtering. Backward compatible: omitting the parameter returns all files.
+- **Context Engine** — `assemble_context()` now injects archived knowledge summaries (5% budget) so agents retain minimal historical awareness.
+- **Orchestrator** — Phase transitions trigger automatic KB archiving via Memory Harness hooks. Cycle-end maintenance archives stale error files.
+
+## [0.2.17] - 2026-04-09
+
+### Added
+- **Declarative Policy Engine** (`policy_engine.py`) — Enforces project-specific constraints from `.adelie/constraints.yaml`. Supports three rule types: `pattern` (regex), `ast` (Python AST analysis), and `file` (line count limits). Violations with severity `block` prevent code promotion.
+- **PolicyGate** — New deterministic checkpoint in the orchestrator pipeline between Reviewer AI and staging promotion. Blocks code that violates declared constraints, with automatic Coder retry loop on violation.
+- **AST Checker** (`utils/ast_checker.py`) — Python AST-based static analysis: detects forbidden calls (`eval`, `exec`, `compile`), wildcard imports (`from X import *`), and missing docstrings on public functions/classes.
+- **Negative Pattern Support** — Rules can define `negative_pattern` to suppress false positives (e.g., `requests.get()` with `timeout=` parameter passes).
+- **Policy Prompt Injection** — Active constraints from `constraints.yaml` are injected into both Coder AI and Reviewer AI prompts for violation prevention at generation time.
+- **39 new tests** (`test_policy_engine.py`) — Pattern matching, AST checks, file rules, PolicyReport, YAML parser, language detection.
+
+### Changed
+- **Orchestrator promotion gate** — Now requires `reviewer_approved AND policy_passed` before promoting staged files. PolicyGate failure triggers Coder feedback retry.
+- **Coder AI** — Receives active policy constraint summary in its prompt context.
+- **Reviewer AI** — Receives active policy constraint summary alongside its normal review context.
+
+## [0.2.16] - 2026-04-09
+
+### Added
+- **Meta Harness Architecture** — Transitioned from a static 6-phase Enum pipeline to a dynamic JSON-based state machine (`harness.json`). Expert AI can now autonomously reconfigure the project pipeline at runtime via the `MODIFY_HARNESS` action.
+- **HarnessManager** (`harness_manager.py`) — Core manager that loads/saves/validates harness configurations, supports snapshot-based rollback, and provides declarative JSON transition criteria evaluation.
+- **DynamicAgent** (`agents/dynamic_agent.py`) — Runtime-configurable agent class. Roles, prompts, and constraints are defined in `harness.json` and instantiated on-the-fly during pipeline execution.
+- **3-Tier Permission Model** — Dynamic agents follow `observer` → `analyst` → `operator` permission escalation. Default is `analyst` (KB read/write + export); `operator` (coder task creation) requires explicit grant.
+- **Harness Rollback** — Every harness modification creates an automatic snapshot in `harness_history/`. Failed modifications auto-rollback; CLI can manually rollback via stored snapshots.
+- **Dynamic Phase Transitions** — Phase transition logic moved from hardcoded lambda functions to declarative JSON conditions (`min_loops`, `min_kb_files`, `required_files`, `min_test_pass_rate`, `min_review_score`).
+- **Orchestrator Phase 5** — New execution phase for dynamic agents that are active in the current pipeline phase, with full scheduler integration.
+
+### Changed
+- **`phases.py` → Compatibility Shim** — `Phase` Enum and `PHASE_INFO` dict are now proxied through `HarnessManager`. All 17+ existing import points continue to work unchanged.
+- **`_check_phase_readiness()`** — Refactored from hardcoded transition map to `HarnessManager.check_transition()` with JSON-based declarative conditions.
+- **Expert AI Output Schema** — Added `MODIFY_HARNESS` action type and `harness_payload` field to the expert decision format.
+- **Phase Transition Logic** — `orchestrator.py` now supports dynamically added phases (not just the base 6) for `suggested_phase` transitions.
 
 ## [0.2.15] - 2026-04-09
 

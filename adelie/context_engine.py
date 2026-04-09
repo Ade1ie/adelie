@@ -293,6 +293,21 @@ def assemble_context(
         result.sections["Key Configuration Files"] = content
         result.total_tokens += estimate_tokens(content)
 
+    # ── Archived Knowledge Summaries (Memory Harness) ────────────────────
+    # Include minimal summaries from archived KB files so agents retain
+    # awareness of past context without loading full documents.
+    if profile.needs_kb_content or profile.needs_cycle_history:
+        try:
+            from adelie.memory_harness import get_memory_harness
+            archive_summary = get_memory_harness().get_archive_summary()
+            if archive_summary:
+                budget = int(profile.max_tokens * 0.05)  # 5% for archive summaries
+                content = truncate_to_budget(archive_summary, budget, "archive summary")
+                result.sections["Archived Knowledge (Summaries)"] = content
+                result.total_tokens += estimate_tokens(content)
+        except Exception:
+            pass
+
     return result
 
 

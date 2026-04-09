@@ -145,6 +145,15 @@ def run_coder(
     except Exception:
         project_tree = "(file tree unavailable)"
 
+    # Get active policy constraints (if any)
+    policy_section = ""
+    try:
+        from adelie.policy_engine import PolicyEngine
+        engine = PolicyEngine()
+        policy_section = engine.get_prompt_summary()
+    except Exception:
+        pass
+
     user_prompt = (
         f"## Task\n{task}\n\n"
         f"## Layer\nThis is a Layer {layer} coder.\n"
@@ -155,6 +164,7 @@ def run_coder(
         f"{get_context_prompt_section()}"
         f"{get_rules_prompt_section()}"
         f"{get_skills_prompt_section('coder')}"
+        f"{policy_section}"
         f"## KB Context\n{context}\n\n"
         f"## Existing Source Files\n{existing}\n\n"
         f"## Lower Layer Coder Logs\n{lower_logs}\n\n"

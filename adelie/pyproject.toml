@@ -1,6 +1,6 @@
 [project]
 name = "adelie"
-version = "0.2.15"
+version = "0.3.0"
 description = "Self-Communicating Autonomous AI Loop System"
 readme = "README.md"
 requires-python = ">=3.10"

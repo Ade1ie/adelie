@@ -5,22 +5,23 @@
 <h1 align="center">Adelie</h1>
 
 <p align="center">
-  <strong>Autonomous AI Orchestration System</strong><br/>
-  <sub>13 specialized agents · 6-phase lifecycle · zero human intervention</sub>
+  <strong>Autonomous AI Orchestration System with Self-Configuring Harness</strong><br/>
+  <sub>13+ dynamic agents · adaptive pipeline · policy-enforced safety · production-aware</sub>
 </p>
 
 <p align="center">
   <a href="https://www.npmjs.com/package/adelie-ai"><img src="https://img.shields.io/npm/v/adelie-ai?style=flat-square&logo=npm&color=CB3837" alt="npm version" /></a>
   <img src="https://img.shields.io/badge/python-3.10+-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python" />
   <img src="https://img.shields.io/badge/LLM-Gemini%20│%20Ollama-FF6F00?style=flat-square" alt="LLM" />
-  <img src="https://img.shields.io/badge/tests-636%20passing-2EA043?style=flat-square" alt="Tests" />
+  <img src="https://img.shields.io/badge/tests-748%20passing-2EA043?style=flat-square" alt="Tests" />
   <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="License" /></a>
 </p>
 
 <p align="center">
   <a href="#quick-start">Quick Start</a>&ensp;·&ensp;
-  <a href="#how-it-works">How It Works</a>&ensp;·&ensp;
+  <a href="#whats-new-in-v030">What's New</a>&ensp;·&ensp;
   <a href="#architecture">Architecture</a>&ensp;·&ensp;
+  <a href="#harness-system">Harness</a>&ensp;·&ensp;
   <a href="#cli">CLI</a>&ensp;·&ensp;
   <a href="#dashboard">Dashboard</a>&ensp;·&ensp;
   <a href="https://ade1ie.github.io/adelie/">Docs</a>&ensp;·&ensp;
@@ -34,39 +35,109 @@
 Adelie is an autonomous AI orchestrator that plans, codes, reviews, tests, deploys, and evolves software projects through a coordinated multi-agent loop. It ships as a single CLI (`npm install -g adelie-ai`) and requires only an LLM provider — no cloud backend, no account.
 
 ```
-    (o_    Adelie v0.2.12
-    //\    gemini · gemini-2.0-flash
-    V_/_   Phase: mid_2
+    (o_    Adelie v0.3.0
+    //\    gemini · gemini-2.5-pro
+    V_/_   Phase: mid_1 | 🛡️3 📡🟢 🧠12/5
 ```
 
-**What Adelie does in every cycle:**
+Unlike simple code-generation tools, Adelie provides a **Harness** — a structural framework that constrains, monitors, and self-corrects the AI at every step:
 
-1. **Writer** curates the Knowledge Base
-2. **Expert** makes strategic decisions — what to build next, what to fix
-3. **Research** gathers external context from the web
-4. **Coder** generates code in 3 dependency layers
-5. **Reviewer** scores code quality; rejects until standards are met
-6. **Checkpoint** snapshots the project before promotion
-7. **Tester** runs tests and reports failures
-8. **Runner** builds, installs, deploys
-9. **Monitor** watches system health
-10. **Analyst** evaluates trends and growth opportunities
-11. **Inform** generates human-readable project status reports
-12. **Phase gates** decide when to advance the project lifecycle
-
-The loop runs continuously at a configurable interval (default 30 s), or once with `adelie run --once`.
+- 🔧 **Dynamic Pipeline** — The AI reconfigures its own execution pipeline based on project needs
+- 🛡️ **Policy Engine** — Declarative constraints block unsafe code before it reaches your project
+- 🧠 **Selective Memory** — Phase-aware KB filtering prevents context derailment and hallucination
+- 📡 **Production Bridge** — Live CI/CD and error monitoring feeds failures back into the AI loop
+- ⛔ **Human Intercept** — Stop the AI instantly at any moment from CLI or Dashboard
 
 ---
 
-## What's New in v0.2.12
+## What's New in v0.3.0
 
-🔒 **Security Hardening** — Shell injection prevention (`&`, `>` blocked), path traversal protection via `Path.resolve()`, staging race condition locks.
+v0.3.0 is a major architectural evolution. The AI no longer just executes a fixed pipeline — it **understands, adapts, and self-corrects** its own operational structure.
 
-🧵 **Thread Safety** — `_usage_lock` protects global token counters during parallel agent execution.
+### 🔧 Meta Harness — Dynamic Pipeline (v0.2.16)
 
-🪟 **Windows Stability** — Fixed `python3` Microsoft Store stub, venv `activate.bat` wrapper, `cmd /c` resolver, cross-platform path handling.
+The static 6-phase pipeline is now a **dynamic JSON state machine**. The Expert AI can analyze a project and restructure the execution flow at runtime.
 
-📋 **Changelog** — [Full changelog](https://ade1ie.github.io/adelie/#changelog) now on the docs site with interactive expand/collapse.
+```bash
+# Expert AI decides: "This project needs a security audit phase"
+# → MODIFY_HARNESS action creates solidity_auditor agent + Security Audit phase
+# → Pipeline automatically restructured: mid → security_audit → mid_1
+```
+
+- **HarnessManager** — Loads/saves/validates JSON-based pipeline configurations
+- **DynamicAgent** — Runtime-configurable agents with 3-tier permissions (observer → analyst → operator)
+- **Snapshot Rollback** — Every modification creates a backup; failed changes auto-revert
+
+### 🛡️ Policy Engine — Declarative Constraints (v0.2.17)
+
+Define project-specific rules in `.adelie/constraints.yaml` that the AI **cannot violate**:
+
+```yaml
+rules:
+  - name: orm-only
+    type: ast
+    description: "DB queries must use ORM"
+    check: no_raw_sql
+
+  - name: timeout-required
+    type: pattern
+    pattern: 'requests\.(get|post|put|delete)\('
+    negative_pattern: 'timeout='
+    description: "HTTP calls must include timeout"
+    severity: block
+```
+
+- **AST Analysis** — Python AST checks for `eval()`, `exec()`, wildcard imports, missing docstrings
+- **Pattern Matching** — Regex rules with negative pattern support for false positive suppression
+- **PolicyGate** — Blocks staging → project promotion on violation; forces Coder retry
+
+### 🧠 Memory Harness — Selective Forgetting (v0.2.18)
+
+Prevents context derailment by controlling what the AI can and cannot see:
+
+- **Phase Scope Filter** — KB files tagged with `phase_scope` are only visible during designated phases
+- **Archive Manager** — Resolved errors and completed-phase docs auto-archived after 3 cycles
+- **Summary Tree** — `archive/summaries.md` preserves 1-2 line summaries for historical awareness
+- **Context Budget** — Only 5% of context window allocated to archived knowledge
+
+### 📡 Production Bridge — CI/CD Feedback Loop (v0.2.19)
+
+Connects the AI loop to external production monitoring:
+
+```
+AI deploys code → GitHub Actions fails → Bridge detects CI failure
+→ HealthVerdict: CRITICAL → Orchestrator: ERROR state
+→ Coder generates hotfix → Deploy again → Bridge confirms: HEALTHY
+```
+
+- **GitHub Actions Adapter** — Polls CI status via REST API or MCP
+- **Sentry Adapter** — Monitors error spikes above threshold
+- **Custom MCP Adapter** — Auto-discovers production monitoring tools
+- **Graceful Degradation** — Missing tokens/config = adapter silently disabled
+
+### ⛔ Human Intercept & Monitoring Overhaul (v0.2.20)
+
+Complete CLI and Dashboard redesign for real-time visibility and control:
+
+```bash
+> /intercept AI is going in wrong direction
+  ⛔ INTERCEPTED
+  Cycle: #12
+  State: normal → error
+  Use /resume to continue with recovery flow.
+
+> /status
+  Status: RUNNING
+  Phase: mid_1  |  State: normal  |  Cycle: 5
+  🛡️ Policy Engine: 3 rules (2 pattern, 1 ast)
+  🧠 Memory Harness: 12 active / 5 archived / 3 scoped
+  📡 Production: HEALTHY (github_actions, sentry)
+  🔧 Pipeline: 6 phases, 13 agents
+```
+
+**New CLI Commands:** `/intercept`, `/policy`, `/health`, `/memory`, `/harness`
+
+**Dashboard Panels:** Intercept button, Production Health, Policy Engine, Memory Harness, Pipeline Visualizer
 
 > See [CHANGELOG.md](./CHANGELOG.md) for complete release history.
 
@@ -181,33 +252,61 @@ The real-time **dashboard** opens automatically at **http://localhost:5042**.
 | **Analyst** | Trend analysis, market insights, KB synthesis | Periodic |
 | **Research** | Web search → KB for external knowledge | On demand |
 | **Inform** | Human-readable project reports and status summaries | On demand |
+| **Dynamic** | Runtime-created agents (security auditor, ML trainer, etc.) | On demand |
 
-### 6-Phase Lifecycle
+### Adaptive Lifecycle
 
-<p align="center">
-  <img src="docs/lifecycle.png" alt="Adelie 6-Phase Lifecycle" width="800" />
-</p>
+```
+initial → mid → mid_1 → mid_2 → late → evolve
+                  ↑
+          Expert AI can insert custom
+          phases here at runtime
+```
 
-Each phase transition is gated by quality metrics — KB file count, test pass rate, review scores, stability indicators. The Expert AI votes on phase transitions; the system enforces the gates.
+Each phase transition is gated by quality metrics — KB file count, test pass rate, review scores, stability indicators. The Expert AI votes on phase transitions; the Harness enforces the gates.
 
-### Layered Code Generation
+### Harness System
 
-The Coder Manager dispatches tasks across three dependency layers:
+The Harness is what makes Adelie different from a simple AI code generator. It's a **structural framework** that constrains and protects the AI:
 
-- **Layer 0** — Features and pages (parallel execution)
-- **Layer 1** — Connectors and integrations (depends on Layer 0)
-- **Layer 2** — Infrastructure and configuration (depends on Layer 1)
-
-Failed layers trigger targeted retries with reviewer feedback.
+```
+┌─────────────────────────────────────────────────┐
+│                  HARNESS LAYER                   │
+│                                                  │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐        │
+│  │ Policy   │ │ Memory   │ │Production│        │
+│  │ Engine   │ │ Harness  │ │ Bridge   │        │
+│  │          │ │          │ │          │        │
+│  │constraints│ │phase scope│ │CI/CD     │        │
+│  │AST check │ │archiving │ │Sentry    │        │
+│  │pattern   │ │summaries │ │GitHub    │        │
+│  └────┬─────┘ └────┬─────┘ └────┬─────┘        │
+│       │            │            │               │
+│  ┌────▼────────────▼────────────▼─────┐         │
+│  │         ORCHESTRATOR               │         │
+│  │  cycle start → agents → promote    │         │
+│  └────────────────────────────────────┘         │
+│                                                  │
+│  ┌──────────┐ ┌──────────┐                      │
+│  │ Harness  │ │ Human    │                      │
+│  │ Manager  │ │ Intercept│                      │
+│  │          │ │          │                      │
+│  │dynamic   │ │/intercept│                      │
+│  │pipeline  │ │dashboard │                      │
+│  │rollback  │ │⛔ button │                      │
+│  └──────────┘ └──────────┘                      │
+└─────────────────────────────────────────────────┘
+```
 
 ### Security
 
 Adelie enforces multiple security layers:
 
-- **Shell injection prevention** — `BLOCKED_CHARS` filter blocks `&`, `>`, `|`, `;`, backticks, and other shell metacharacters in all subprocess commands
-- **Path traversal protection** — `Path.resolve()` verification ensures generated files stay within the staging directory
-- **Staging isolation** — Code is written to `.adelie/staging/` first, verified with `py_compile` / `node --check`, then promoted to project root
-- **Thread-safe operations** — `_usage_lock` and `_staging_lock` prevent race conditions during parallel agent execution
+- **Policy Engine** — Declarative constraints block AST violations, forbidden patterns, and file limits
+- **Shell injection prevention** — `BLOCKED_CHARS` filter blocks `&`, `>`, `|`, `;`, backticks
+- **Path traversal protection** — `Path.resolve()` verification ensures files stay within staging
+- **Staging isolation** — Code is written to `.adelie/staging/` first, verified, then promoted
+- **Thread-safe operations** — `_usage_lock` and `_staging_lock` prevent race conditions
 - **Whitelisted commands** — Runner and Tester only execute pre-approved command patterns
 
 ---
@@ -224,10 +323,14 @@ Adelie enforces multiple security layers:
 
 Adelie serves a real-time monitoring UI at **`http://localhost:5042`** (auto-starts with `adelie run`).
 
-- **Agent grid** — live status of all 13 agents (idle / running / done / error)
+- **Agent grid** — live status of all agents (idle / running / done / error)
+- **⛔ Intercept button** — emergency stop from the browser
+- **Production Health** — real-time verdict badge (🟢 HEALTHY / 🟡 DEGRADED / 🔴 CRITICAL)
+- **Policy Engine** — active rule count and type breakdown
+- **Memory Harness** — active/archived/scoped file counters
+- **Pipeline Visualizer** — horizontal phase flow with active/completed highlighting
 - **Log stream** — real-time SSE-powered log feed with category filtering
 - **Cycle metrics** — tokens, LLM calls, files written, test results, review scores
-- **Phase timeline** — visual progress through the 6-phase lifecycle
 - **Cycle history chart** — last 30 cycles at a glance
 
 Built with zero external dependencies — Python `http.server` + SSE + embedded HTML/JS.
@@ -264,6 +367,25 @@ adelie run --once --goal "…"      # Single cycle
 adelie run ws <N>                 # Resume workspace #N
 ```
 
+### Interactive Commands (REPL)
+
+| Command | Action |
+|:--|:--|
+| `/help` | Show all commands |
+| `/status` | Full system status (all features) |
+| `/pause` | Pause before next cycle |
+| `/resume` | Resume from pause |
+| `/intercept [reason]` | ⛔ Immediate stop + ERROR state |
+| `/feedback <msg>` | Send feedback to AI |
+| `/policy` | Policy Engine rules & status |
+| `/health` | Production health & signals |
+| `/memory` | Memory Harness statistics |
+| `/harness` | Pipeline structure & agents |
+| `/plan` | View pending plan (Plan Mode) |
+| `/approve` | Approve pending plan |
+| `/reject [reason]` | Reject pending plan |
+| `/exit` | Stop and exit |
+
 ### Configuration
 
 ```bash
@@ -274,25 +396,12 @@ adelie config --api-key KEY       # Set Gemini API key
 adelie config --plan-mode true    # Enable Plan Mode (human approval)
 ```
 
-### Settings
-
-```bash
-adelie settings                   # View all settings
-adelie settings --global          # View global settings
-adelie settings set <key> <val>   # Change workspace setting
-adelie settings set --global <key> <val>  # Change global setting
-adelie settings reset <key>       # Reset to default
-```
-
-Available settings: `dashboard`, `dashboard.port`, `loop.interval`, `plan.mode`, `sandbox`, `mcp`, `browser.search`, `browser.max_pages`, `fallback.models`, `fallback.cooldown`, `language`
-
 ### Monitoring
 
 ```bash
 adelie status                     # System health & provider status
 adelie inform                     # AI-generated project report
 adelie phase                      # Show current phase
-adelie phase set <phase>          # Set phase manually
 adelie metrics                    # Cycle metrics & history
 adelie metrics --agents           # Per-agent token usage
 ```
@@ -302,51 +411,12 @@ adelie metrics --agents           # Per-agent token usage
 ```bash
 adelie kb                         # KB file counts by category
 adelie kb --clear-errors          # Clear error files
-adelie kb --reset                 # Reset entire KB
 adelie goal                       # Show project goal
 adelie goal set "…"               # Set project goal
 adelie feedback "message"         # Inject feedback into AI loop
 adelie research "topic"           # Web search → KB
 adelie spec load <file>           # Load spec (MD/PDF/DOCX) into KB
-adelie git                        # Git status & recent commits
 ```
-
-### Customization
-
-```bash
-adelie prompts                    # List agent system prompts
-adelie prompts export             # Export prompts for editing
-adelie tools                      # List registered tools
-adelie commands                   # List custom commands
-```
-
-### Integrations
-
-```bash
-adelie telegram setup             # Configure Telegram bot
-adelie telegram start             # Start Telegram bot
-adelie ollama list                # List Ollama models
-adelie ollama pull <model>        # Download model
-adelie ollama run [model]         # Interactive chat
-```
-
----
-
-## Plan Mode
-
-Enable Plan Mode for human-in-the-loop control:
-
-```bash
-adelie config --plan-mode true
-```
-
-When enabled, the Expert AI generates a **plan** before executing code changes. You can review, approve, or reject from the interactive REPL:
-
-| Command | Action |
-|:--|:--|
-| `/plan` | View pending plan |
-| `/approve` | Execute the plan |
-| `/reject [reason]` | Reject and provide feedback |
 
 ---
 
@@ -361,42 +431,47 @@ When enabled, the Expert AI generates a **plan** before executing code changes. 
 | `GEMINI_MODEL` | `gemini-2.0-flash` | Gemini model name |
 | `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama server URL |
 | `OLLAMA_MODEL` | `llama3.2` | Ollama model name |
-| `FALLBACK_MODELS` | — | Fallback chain (`gemini:flash,ollama:llama3.2`) |
 | `LOOP_INTERVAL_SECONDS` | `30` | Cycle interval in seconds |
 | `DASHBOARD_ENABLED` | `true` | Dashboard on/off |
 | `DASHBOARD_PORT` | `5042` | Dashboard port |
 | `PLAN_MODE` | `false` | Require approval before execution |
 | `SANDBOX_MODE` | `none` | `none`, `seatbelt`, or `docker` |
+| `PRODUCTION_BRIDGE_ENABLED` | `false` | Enable Production Bridge |
+| `PRODUCTION_POLL_INTERVAL` | `60` | Bridge polling interval (seconds) |
 
-### Docker Sandbox
-
-Optional `.adelie/sandbox.json`:
-
-```json
-{
-  "docker": {
-    "image": "adelie-sandbox:latest",
-    "workspaceAccess": "rw",
-    "network": "none",
-    "memoryLimit": "512m",
-    "cpuLimit": 1.0
-  }
-}
-```
-
-### Custom Skills
-
-Place custom skills in `.adelie/skills/<name>/SKILL.md`:
+### Policy Engine (`.adelie/constraints.yaml`)
 
 ```yaml
----
-name: react-specialist
-description: React/TypeScript best practices
-agents: [coder, reviewer]
-trigger: auto
----
-Use functional components with TypeScript props…
+rules:
+  - name: no-eval
+    type: pattern
+    pattern: '\beval\s*\('
+    description: "Block eval() calls"
+    severity: block
+
+  - name: docstrings
+    type: ast
+    check: missing_docstring
+    description: "Public functions must have docstrings"
+    severity: warn
 ```
+
+### Production Bridge
+
+```bash
+# .adelie/.env
+PRODUCTION_BRIDGE_ENABLED=true
+
+# GitHub Actions
+GITHUB_TOKEN=ghp_xxxxx
+
+# Sentry
+SENTRY_AUTH_TOKEN=sntrys_xxxxx
+SENTRY_ORG=my-org
+SENTRY_PROJECT=my-project
+```
+
+Or add MCP servers to `.adelie/mcp.json` for MCP-based monitoring.
 
 ---
 
@@ -404,6 +479,11 @@ Use functional components with TypeScript props…
 
 | Feature | Description |
 |:--|:--|
+| 🔧 **Meta Harness** | Dynamic pipeline — AI reconfigures its own execution structure |
+| 🛡️ **Policy Engine** | Declarative constraints block unsafe code at AST/pattern level |
+| 🧠 **Memory Harness** | Phase-aware KB filtering prevents context derailment |
+| 📡 **Production Bridge** | Live CI/CD + Sentry + MCP monitoring with auto-rollback |
+| ⛔ **Human Intercept** | Instant mid-cycle stop from CLI (`/intercept`) or Dashboard |
 | 💾 **Checkpoints** | Auto-snapshot before promotion, instant rollback |
 | 🐳 **Docker Sandbox** | Configurable workspace isolation, network policy, resource limits |
 | 🌐 **REST Gateway** | HTTP API — `/api/status`, `/api/tools`, `/api/control` |
@@ -411,7 +491,7 @@ Use functional components with TypeScript props…
 | 📡 **Multichannel** | `ChannelProvider` ABC — Discord, Slack, custom channels |
 | 🤝 **A2A Protocol** | Agent-to-Agent HTTP for external agent integration |
 | 🔧 **MCP Support** | Model Context Protocol for external tool ecosystems |
-| 📊 **Dashboard** | Real-time web UI with SSE streaming on port 5042 |
+| 📊 **Dashboard** | Real-time web UI with feature panels, intercept, and SSE streaming |
 | 🔄 **Loop Detector** | 5 stuck-pattern types with escalating interventions |
 | ⚡ **Scheduler** | Per-agent frequency control with cooldown/priority |
 | 🔒 **Security** | Shell injection prevention, path traversal protection, staging isolation |
@@ -422,7 +502,7 @@ Use functional components with TypeScript props…
 ## Testing
 
 ```bash
-python -m pytest tests/ -v    # 636 tests
+python -m pytest tests/ -v    # 748 tests
 ```
 
 ---
@@ -431,21 +511,19 @@ python -m pytest tests/ -v    # 636 tests
 
 ```
 adelie/
-├── orchestrator.py          # Main loop — state machine + phase gates
+├── orchestrator.py          # Main loop — state machine + harness integration
+├── harness_manager.py       # Dynamic pipeline configuration + rollback
+├── policy_engine.py         # Declarative constraint enforcement
+├── memory_harness.py        # Selective forgetting + phase-aware KB
+├── production_bridge.py     # CI/CD + monitoring feedback loop
 ├── commands/                # CLI command modules
-│   ├── workspace.py         #   init, ws
-│   ├── run.py               #   run, run once, run ws
-│   ├── config.py            #   config, settings
-│   ├── monitoring.py        #   status, phase, metrics, inform
-│   ├── knowledge.py         #   kb, feedback, goal, research, spec, scan
-│   └── integrations.py      #   ollama, telegram, git, tools, prompts
 ├── cli.py                   # CLI entry point + argparse routing
 ├── config.py                # Configuration & env loading
 ├── llm_client.py            # LLM abstraction (Gemini + Ollama + fallback)
-├── interactive.py           # REPL + dashboard integration
+├── interactive.py           # REPL + dashboard + intercept commands
 ├── dashboard.py             # Real-time web server (HTTP + SSE)
 ├── dashboard_html.py        # Embedded dashboard UI template
-├── agents/                  # 12 specialized AI agents
+├── agents/                  # 12+ specialized AI agents
 │   ├── writer_ai.py         #   Knowledge Base curator
 │   ├── expert_ai.py         #   Strategic decision maker
 │   ├── coder_ai.py          #   Code generator
@@ -457,7 +535,10 @@ adelie/
 │   ├── analyst_ai.py        #   Trend analyzer
 │   ├── research_ai.py       #   Web researcher
 │   ├── inform_ai.py         #   Status report generator
-│   └── scanner_ai.py        #   Initial codebase scanner
+│   ├── scanner_ai.py        #   Initial codebase scanner
+│   └── dynamic_agent.py     #   Runtime-created agents
+├── utils/
+│   └── ast_checker.py       #   AST-based static analysis
 ├── kb/                      # Knowledge Base (retriever + embeddings)
 ├── channels/                # Multichannel providers (Discord, Slack)
 ├── a2a/                     # Agent-to-Agent protocol
@@ -465,11 +546,10 @@ adelie/
 ├── sandbox.py               # Docker/Seatbelt isolation
 ├── gateway.py               # REST API gateway
 ├── skill_manager.py         # Skill registry
-├── env_strategy.py          # Runtime environment detection
 ├── plan_mode.py             # Plan Mode (human approval)
 ├── loop_detector.py         # Stuck-pattern detection
 ├── scheduler.py             # Per-agent scheduling
-├── phases.py                # Lifecycle phase definitions
+├── phases.py                # Lifecycle phase definitions (compat shim)
 ├── hooks.py                 # Event-driven plugin system
 └── process_supervisor.py    # Subprocess management
 ```

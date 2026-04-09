@@ -58,6 +58,10 @@ MCP_ENABLED: bool = os.getenv("MCP_ENABLED", "true").lower() in ("true", "1", "y
 DASHBOARD_PORT: int = int(os.getenv("DASHBOARD_PORT", "5042"))
 DASHBOARD_ENABLED: bool = os.getenv("DASHBOARD_ENABLED", "true").lower() in ("true", "1", "yes")
 
+# ── Production Bridge ───────────────────────────────────────────────────────
+PRODUCTION_BRIDGE_ENABLED: bool = os.getenv("PRODUCTION_BRIDGE_ENABLED", "false").lower() in ("true", "1", "yes")
+PRODUCTION_POLL_INTERVAL: int = int(os.getenv("PRODUCTION_POLL_INTERVAL", "60"))
+
 # ── Knowledge Base workspace ─────────────────────────────────────────────────
 _ws_env = os.getenv("WORKSPACE_PATH")
 if _ws_env:

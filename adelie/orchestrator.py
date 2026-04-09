@@ -31,11 +31,12 @@ from adelie.agents import expert_ai, writer_ai
 from adelie.config import LOOP_INTERVAL_SECONDS, WORKSPACE_PATH, PROJECT_ROOT, ADELIE_ROOT, MCP_ENABLED
 from adelie.context_compactor import CycleHistory
 from adelie.context_engine import AgentType, AssembledContext, assemble_context, after_cycle, get_budget
+from adelie.harness_manager import get_manager as get_harness_manager
 from adelie.hooks import HookEvent, HookManager
 from adelie.kb import retriever
 from adelie.loop_detector import LoopDetector, LoopLevel
 from adelie.process_supervisor import ProcessSupervisor
-from adelie.scheduler import Scheduler
+from adelie.scheduler import Scheduler, Frequency
 from adelie.phases import Phase
 
 console = Console()
@@ -231,8 +232,9 @@ class Orchestrator:
         Check if conditions for the next phase are met.
         Returns the next phase value if ready, None otherwise.
         Does NOT actually transition — just recommends.
+
+        Delegates to HarnessManager's declarative JSON-based transition logic.
         """
-        from adelie.phases import Phase
         from adelie.config import LLM_PROVIDER
 
         categories = retriever.list_categories()
@@ -254,61 +256,16 @@ class Orchestrator:
         recent_scores = self._review_score_history[-5:]
         avg_review_score = (sum(recent_scores) / len(recent_scores)) if recent_scores else 0
 
-        transitions = {
-            Phase.INITIAL: {
-                "next": Phase.MID,
-                "check": lambda: (
-                    total_files >= 5
-                    and any("roadmap" in f for f in kb_files)
-                    and any("architecture" in f or "vision" in f for f in kb_files)
-                ),
-                "min_loops": int(8 * loop_mult),
-            },
-            Phase.MID: {
-                "next": Phase.MID_1,
-                "check": lambda: (
-                    total_files >= 8
-                    and any("implementation" in f or "test" in f for f in kb_files)
-                    and avg_review_score >= 4  # Quality gate
-                ),
-                "min_loops": int(15 * loop_mult),
-            },
-            Phase.MID_1: {
-                "next": Phase.MID_2,
-                "check": lambda: (
-                    total_files >= 10
-                    and any("operations" in f or "test_result" in f for f in kb_files)
-                    and test_pass_rate >= 0.3  # At least some tests pass
-                    and avg_review_score >= 5  # Quality gate
-                ),
-                "min_loops": int(20 * loop_mult),
-            },
-            Phase.MID_2: {
-                "next": Phase.LATE,
-                "check": lambda: (
-                    total_files >= 12
-                    and any("deploy" in f or "stability" in f for f in kb_files)
-                    and test_pass_rate >= 0.5  # Half tests pass
-                    and avg_review_score >= 6  # Good quality
-                ),
-                "min_loops": int(25 * loop_mult),
-            },
-            Phase.LATE: {
-                "next": Phase.EVOLVE,
-                "check": lambda: (
-                    total_files >= 15
-                    and any("feature_proposal" in f or "innovation" in f for f in kb_files)
-                    and test_pass_rate >= 0.7  # Most tests pass
-                    and avg_review_score >= 7  # High quality
-                ),
-                "min_loops": int(30 * loop_mult),
-            },
-        }
-
-        rule = transitions.get(self.phase)
-        if rule and self.loop_iteration >= rule["min_loops"] and rule["check"]():
-            return rule["next"].value
-        return None
+        hm = get_harness_manager()
+        return hm.check_transition(
+            current_phase=self.phase,
+            loop_iteration=self.loop_iteration,
+            total_kb_files=total_files,
+            kb_file_stems=kb_files,
+            test_pass_rate=test_pass_rate,
+            avg_review_score=avg_review_score,
+            loop_multiplier=loop_mult,
+        )
 
     def _save_state(self) -> None:
         """Persist current phase, loop_iteration, and quality history to .adelie/config.json."""
@@ -598,6 +555,52 @@ class Orchestrator:
             "phase": self.phase,
         })
 
+        # ── Production Bridge: poll external services ─────────────────────
+        try:
+            from adelie.config import PRODUCTION_BRIDGE_ENABLED
+            if PRODUCTION_BRIDGE_ENABLED:
+                from adelie.production_bridge import get_production_bridge, HealthVerdict
+                bridge = get_production_bridge()
+                bridge.poll_all()
+                verdict = bridge.get_verdict()
+
+                if verdict == HealthVerdict.CRITICAL:
+                    critical_signals = bridge.get_critical_signals()
+                    console.print(
+                        f"[bold red]🚨 PRODUCTION CRITICAL — "
+                        f"{len(critical_signals)} alert(s)[/bold red]"
+                    )
+                    # Switch to ERROR state
+                    self.state = LoopState.ERROR
+                    # Log production errors to KB
+                    error_details = "\n".join(
+                        f"- [{s.source}] {s.title}: {s.details[:200]}"
+                        for s in critical_signals[:5]
+                    )
+                    self._write_error_to_kb(
+                        f"Production Alert (auto-detected):\n{error_details}"
+                    )
+                    # Emit production alert hook
+                    self.hooks.emit(HookEvent.PRODUCTION_ALERT, {
+                        "iteration": self.loop_iteration,
+                        "verdict": "critical",
+                        "signal_count": len(critical_signals),
+                        "signals": [
+                            {"source": s.source, "title": s.title, "severity": s.severity}
+                            for s in critical_signals[:5]
+                        ],
+                    })
+                    # Acknowledge so we don't re-trigger next cycle
+                    bridge.acknowledge_critical()
+
+                elif verdict == HealthVerdict.DEGRADED:
+                    console.print(
+                        "[yellow]⚠️  Production degraded — "
+                        "warnings injected into Expert context[/yellow]"
+                    )
+        except Exception:
+            pass  # Bridge unavailable — continue normally
+
         # Wait if pause was requested
         self._wait_if_paused()
 
@@ -754,7 +757,8 @@ class Orchestrator:
         # Expert AI can confirm transition via suggested_phase
         suggested_phase = decision.get("suggested_phase")
         if suggested_phase and suggested_phase != self.phase:
-            phase_order = [p.value for p in Phase]
+            hm = get_harness_manager()
+            phase_order = hm.get_phase_order()
             try:
                 current_idx = phase_order.index(self.phase)
                 suggested_idx = phase_order.index(suggested_phase)
@@ -773,8 +777,35 @@ class Orchestrator:
                         "old_phase": old_phase,
                         "new_phase": self.phase,
                     })
+                    # Memory Harness: archive old-phase KB files
+                    try:
+                        from adelie.memory_harness import get_memory_harness
+                        get_memory_harness().on_phase_transition(old_phase, self.phase)
+                    except Exception:
+                        pass
             except ValueError:
-                pass
+                # Phase not in order list — might be a dynamically added phase
+                # Allow transition if HarnessManager recognizes both
+                if hm.get_phase_config(suggested_phase) is not None:
+                    old_phase = self.phase
+                    old = get_phase_label(old_phase)
+                    self.phase = suggested_phase
+                    new = get_phase_label(self.phase)
+                    console.print(f"[bold green]✅ Expert AI confirmed phase → {new} (dynamic)[/bold green]")
+                    self._save_phase()
+                    self._phase_ready_count = 0
+                    self._phase_recommendation = None
+                    self.hooks.emit(HookEvent.PHASE_CHANGE, {
+                        "iteration": self.loop_iteration,
+                        "old_phase": old_phase,
+                        "new_phase": self.phase,
+                    })
+                    # Memory Harness: archive old-phase KB files
+                    try:
+                        from adelie.memory_harness import get_memory_harness
+                        get_memory_harness().on_phase_transition(old_phase, self.phase)
+                    except Exception:
+                        pass
 
         # Safety valve: force transition if Expert AI ignores too many recommendations
         # Local models get more patience (8 cycles vs 5 for API)
@@ -797,6 +828,12 @@ class Orchestrator:
                 "new_phase": self.phase,
                 "auto": True,
             })
+            # Memory Harness: archive old-phase KB files
+            try:
+                from adelie.memory_harness import get_memory_harness
+                get_memory_harness().on_phase_transition(old_phase, self.phase)
+            except Exception:
+                pass
 
         # ── Handle Expert AI decision ─────────────────────────────────────────
         action          = decision.get("action", "CONTINUE")
@@ -1002,8 +1039,68 @@ class Orchestrator:
             except Exception as e:
                 console.print(f"[dim]⚠️ Import checker error: {e}[/dim]")
 
-        # ── Promote staged files to project (after review) ────────────────
+        # ── PolicyGate: declarative constraint enforcement (before promote) ──
+        policy_passed = True
         if all_written_files and reviewer_approved:
+            try:
+                from adelie.policy_engine import PolicyEngine
+                from adelie.agents.coder_ai import STAGING_ROOT as _STAGING
+                engine = PolicyEngine()
+                if engine.has_rules:
+                    report = engine.check_all(all_written_files, _STAGING)
+
+                    if report.violations:
+                        for v in report.violations:
+                            icon = "⛔" if v.severity == "block" else "⚠️" if v.severity == "warn" else "ℹ️"
+                            console.print(
+                                f"  {icon} [{v.rule_id}] {v.file}:{v.line} — {v.message}"
+                            )
+
+                    if report.has_blockers:
+                        policy_passed = False
+                        console.print(
+                            f"[bold red]⛔ PolicyGate: {report.blocker_count} blocking violation(s) "
+                            f"— promote DENIED[/bold red]"
+                        )
+                        # Feed violations back to coder for one fix attempt
+                        if coder_tasks and self.phase != "initial":
+                            from adelie.agents.coder_manager import run_coders
+                            from adelie.phases import PHASE_INFO
+                            phase_info = PHASE_INFO.get(self.phase, {})
+                            max_layer = phase_info.get("max_coder_layer", 0)
+                            feedback = report.format_feedback()
+                            for task in coder_tasks:
+                                task["feedback"] = feedback
+                            try:
+                                fix_start = time.time()
+                                run_coders(coder_tasks, max_active_layer=max_layer)
+                                new_files = self._collect_staged_files(fix_start)
+                                if new_files:
+                                    all_written_files = new_files
+                                    # Re-check after fix
+                                    report2 = engine.check_all(new_files, _STAGING)
+                                    if not report2.has_blockers:
+                                        policy_passed = True
+                                        console.print(
+                                            "[bold green]✅ PolicyGate: violations fixed after retry[/bold green]"
+                                        )
+                                    else:
+                                        console.print(
+                                            f"[red]⛔ PolicyGate: still {report2.blocker_count} "
+                                            f"blocking violation(s) after retry[/red]"
+                                        )
+                            except Exception as pe:
+                                console.print(f"[dim]⚠️ PolicyGate fix error: {pe}[/dim]")
+                    elif report.warning_count > 0:
+                        console.print(
+                            f"[yellow]⚠️ PolicyGate: {report.warning_count} warning(s) "
+                            f"(non-blocking)[/yellow]"
+                        )
+            except Exception as e:
+                console.print(f"[dim]⚠️ PolicyGate error: {e}[/dim]")
+
+        # ── Promote staged files to project (after review + policy) ───────
+        if all_written_files and reviewer_approved and policy_passed:
             with self._staging_lock:
                 self._promote_staged_files(all_written_files)
                 self._cleanup_staging()
@@ -1292,10 +1389,80 @@ class Orchestrator:
             except Exception:
                 pass
 
+        # ══════════════════════════════════════════════════════════════════════
+        # PHASE 5: Dynamic Agents (from harness.json)
+        # Run any dynamic agents that are active in the current phase.
+        # ══════════════════════════════════════════════════════════════════════
+        try:
+            hm = get_harness_manager()
+            dynamic_agent_configs = hm.get_agents_for_phase(self.phase)
+            if dynamic_agent_configs:
+                from adelie.agents.dynamic_agent import create_dynamic_agents
+                from adelie.llm_client import set_current_agent
+                dynamic_agents = create_dynamic_agents(dynamic_agent_configs)
+                for agent_name, agent in dynamic_agents.items():
+                    if self.scheduler.should_run(agent_name, self.loop_iteration):
+                        try:
+                            set_current_agent(agent_name)
+                            self._emit_agent_start(agent_name)
+                            agent_result = agent.run(
+                                system_state=system_state,
+                                loop_iteration=self.loop_iteration,
+                            )
+                            self.scheduler.mark_ran(agent_name, self.loop_iteration)
+                            severity = agent_result.get("severity", "info")
+                            self._emit_agent_end(agent_name, severity)
+
+                            # If agent produced coder tasks and has permission, add them
+                            if agent_result.get("coder_tasks") and agent.can_create_coder_tasks:
+                                extra_tasks = agent_result["coder_tasks"]
+                                console.print(
+                                    f"[cyan]  🔧 {agent_name} produced {len(extra_tasks)} coder task(s)[/cyan]"
+                                )
+                        except Exception as e:
+                            console.print(f"[red]❌ Dynamic agent {agent_name} error: {e}[/red]")
+                            self._emit_agent_end(agent_name, f"error: {e}")
+        except Exception as e:
+            console.print(f"[dim]⚠️ Dynamic agent phase error: {e}[/dim]")
+
         old_state = self.state
 
         if action == "EXPORT" and export_data:
             self._write_export(export_data)
+            self.state = LoopState(next_situation) if next_situation in LoopState._value2member_map_ else LoopState.NORMAL
+
+        elif action == "MODIFY_HARNESS":
+            # Expert AI requested a harness modification
+            harness_payload = decision.get("harness_payload", {})
+            if harness_payload:
+                hm = get_harness_manager()
+                success, msg = hm.modify_harness(harness_payload)
+                if success:
+                    console.print(f"[bold green]🔧 Harness modified: {msg}[/bold green]")
+                    # Register new dynamic agents with scheduler
+                    for agent_config in harness_payload.get("new_agents", []):
+                        schedule = agent_config.get("schedule", {})
+                        freq_str = schedule.get("frequency", "every_cycle")
+                        try:
+                            freq = Frequency(freq_str)
+                        except ValueError:
+                            freq = Frequency.EVERY_CYCLE
+                        self.scheduler.set_frequency(
+                            agent_config["name"], freq,
+                            cycle_interval=schedule.get("cycle_interval"),
+                            time_interval=schedule.get("time_interval"),
+                        )
+                    # Reload PHASE_INFO proxy
+                    from adelie.phases import PHASE_INFO
+                    if hasattr(PHASE_INFO, 'reload'):
+                        PHASE_INFO.reload()
+                    self.hooks.emit(HookEvent.STATE_CHANGE, {
+                        "iteration": self.loop_iteration,
+                        "old_state": "harness_modify",
+                        "new_state": "harness_modified",
+                    })
+                else:
+                    console.print(f"[red]❌ Harness modification failed: {msg}[/red]")
             self.state = LoopState(next_situation) if next_situation in LoopState._value2member_map_ else LoopState.NORMAL
 
         elif action == "PAUSE":
@@ -1415,6 +1582,15 @@ class Orchestrator:
         except Exception as e:
             console.print(f"[dim]  ⚠️ after_cycle hook error: {e}[/dim]")
 
+        # ── Memory Harness: cycle-end maintenance ────────────────────────────
+        try:
+            from adelie.memory_harness import get_memory_harness
+            mh = get_memory_harness()
+            mh.update_cycle(self.loop_iteration)
+            mh.archive_resolved_errors()
+        except Exception:
+            pass
+
         # Emit after-cycle hook
         self.hooks.emit(HookEvent.AFTER_CYCLE, {
             "iteration": self.loop_iteration,
@@ -1431,6 +1607,122 @@ class Orchestrator:
     def resume(self) -> None:
         """Resume the orchestrator from a paused state."""
         self._pause_requested = False
+
+    def intercept(self, reason: str = "User intercept") -> dict:
+        """
+        Immediately intercept the orchestrator — force ERROR state + pause.
+
+        Unlike pause(), this takes effect mid-cycle:
+        - Sets state to ERROR (triggers recovery flow)
+        - Pauses before next agent runs
+        - Records the intercept reason in KB
+
+        Returns:
+            dict with intercept details.
+        """
+        old_state = self.state.value
+        self.state = LoopState.ERROR
+        self._pause_requested = True
+        self.last_error = f"[INTERCEPT] {reason}"
+
+        # Record in KB
+        try:
+            self._write_error_to_kb(
+                f"Human Intercept (cycle #{self.loop_iteration}):\n"
+                f"Reason: {reason}\n"
+                f"Previous state: {old_state}"
+            )
+        except Exception:
+            pass
+
+        # Emit hook
+        self.hooks.emit(HookEvent.ON_ERROR, {
+            "iteration": self.loop_iteration,
+            "error": reason,
+            "source": "intercept",
+        })
+
+        console.print(f"[bold red]⛔ INTERCEPTED — {reason}[/bold red]")
+        return {
+            "intercepted": True,
+            "cycle": self.loop_iteration,
+            "old_state": old_state,
+            "new_state": "error",
+            "reason": reason,
+        }
+
+    def get_feature_status(self) -> dict:
+        """
+        Get status of all v0.2.16-0.2.19 features for /status display.
+
+        Returns dict with policy, memory, production, harness sections.
+        """
+        status = {}
+
+        # Policy Engine
+        try:
+            from adelie.policy_engine import PolicyEngine
+            pe = PolicyEngine()
+            rules = pe.load_rules()
+            status["policy"] = {
+                "active": True,
+                "rule_count": len(rules),
+                "rules": [
+                    {"type": r.get("type", "?"), "name": r.get("name", "?")}
+                    for r in rules[:10]
+                ],
+            }
+        except Exception:
+            status["policy"] = {"active": False, "rule_count": 0, "rules": []}
+
+        # Memory Harness
+        try:
+            from adelie.memory_harness import get_memory_harness
+            mh = get_memory_harness()
+            mh_stats = mh.get_stats()
+            status["memory"] = {
+                "active": True,
+                **mh_stats,
+            }
+        except Exception:
+            status["memory"] = {"active": False}
+
+        # Production Bridge
+        try:
+            from adelie.config import PRODUCTION_BRIDGE_ENABLED
+            if PRODUCTION_BRIDGE_ENABLED:
+                from adelie.production_bridge import get_production_bridge
+                bridge = get_production_bridge()
+                status["production"] = bridge.get_stats()
+            else:
+                status["production"] = {"enabled": False}
+        except Exception:
+            status["production"] = {"enabled": False}
+
+        # Harness / Pipeline
+        try:
+            hm = get_harness_manager()
+            harness_info = hm.get_current_harness()
+            phases = harness_info.get("phases", [])
+            agents = harness_info.get("agents", [])
+            dynamic_agents = [a for a in agents if a.get("dynamic")]
+            status["harness"] = {
+                "phase_count": len(phases),
+                "agent_count": len(agents),
+                "dynamic_agent_count": len(dynamic_agents),
+                "dynamic_agents": [a.get("name", "?") for a in dynamic_agents],
+                "current_phase": self.phase,
+            }
+        except Exception:
+            status["harness"] = {
+                "phase_count": 6,
+                "agent_count": 13,
+                "dynamic_agent_count": 0,
+                "dynamic_agents": [],
+                "current_phase": self.phase,
+            }
+
+        return status
 
     def _wait_if_paused(self) -> None:
         """Block the thread if a pause is requested, until resumed."""

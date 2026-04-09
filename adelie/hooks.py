@@ -55,6 +55,9 @@ class HookEvent(str, Enum):
     # Loop detection
     LOOP_DETECTED = "loop_detected"
 
+    # Production bridge
+    PRODUCTION_ALERT = "production_alert"
+
 
 # ── Hook Callback Type ───────────────────────────────────────────────────────
 

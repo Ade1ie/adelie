@@ -107,9 +107,11 @@ class DashboardState:
         self.state: str = "normal"
         self.agents: dict[str, dict] = {}
         self.metrics: dict = {}
+        self.features: dict = {}  # Policy/Memory/Production/Harness status
         self.events = EventBus()
         self.logs = LogBuffer(maxlen=200)
         self._lock = threading.Lock()
+        self._orchestrator = None  # Reference for intercept
         # Debounce tracking for agent updates
         self._agent_last_publish: dict[str, float] = {}
         self._agent_debounce_ms: float = 0.05  # 50ms debounce for same agent
@@ -145,6 +147,12 @@ class DashboardState:
             self.metrics = metrics
         self.events.publish("metrics", metrics)
 
+    def update_features(self, features: dict) -> None:
+        """Update feature status (policy, memory, production, harness)."""
+        with self._lock:
+            self.features = features
+        self.events.publish("features", features)
+
     def add_log(self, category: str, message: str) -> None:
         entry = {
             "timestamp": datetime.now().isoformat(timespec="milliseconds"),
@@ -164,6 +172,7 @@ class DashboardState:
                 "state": self.state,
                 "agents": dict(self.agents),
                 "metrics": dict(self.metrics),
+                "features": dict(self.features),
             }
 
 
@@ -218,9 +227,34 @@ class DashboardHandler(BaseHTTPRequestHandler):
             except Exception:
                 self._send_json({"cycles": []})
 
+        elif self.path == "/api/features":
+            self._send_json(ds.features or {})
+
         elif self.path == "/events":
             self._handle_sse(ds)
 
+        else:
+            self.send_error(404)
+
+    def do_POST(self):
+        ds: DashboardState = self.server._dashboard_state  # type: ignore
+
+        if self.path == "/api/intercept":
+            # Read body
+            content_length = int(self.headers.get('Content-Length', 0))
+            body = self.rfile.read(content_length) if content_length else b'{}'
+            try:
+                data = json.loads(body.decode('utf-8'))
+            except Exception:
+                data = {}
+
+            reason = data.get('reason', 'Dashboard intercept')
+
+            if ds._orchestrator:
+                result = ds._orchestrator.intercept(reason)
+                self._send_json(result)
+            else:
+                self._send_json({"error": "Orchestrator not connected"}, 503)
         else:
             self.send_error(404)
 

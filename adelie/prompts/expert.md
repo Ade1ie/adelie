@@ -38,7 +38,8 @@ Output format:
       "category": "dependencies"
     }
   ],
-  "export_data": null
+  "export_data": null,
+  "harness_payload": null
 }
 
 ACTION_TYPE options:
@@ -48,6 +49,7 @@ ACTION_TYPE options:
   - PAUSE          : Request maintenance window
   - NEW_LOGIC      : Bootstrap new knowledge. Use ONLY when the KB is truly empty or missing critical information.
   - SHUTDOWN       : Gracefully stop the loop (only if explicitly needed)
+  - MODIFY_HARNESS : Modify the project pipeline (add/remove phases, add dynamic agents). Include harness_payload.
 
 CRITICAL STATE TRANSITION RULES:
 - If the current situation is "new_logic" AND knowledge files already exist in the KB, you MUST set next_situation to "normal" and action to "CONTINUE".
@@ -102,3 +104,19 @@ RESEARCH QUERIES:
 - Each query: topic (what to search), context (why it's needed), category (KB category to store: dependencies/skills/logic).
 - If no external info is needed, set research_queries to an empty array [].
 - Use sparingly — each query costs an API call. Max 5 per cycle.
+
+HARNESS MODIFICATION (MODIFY_HARNESS):
+- If you determine the project requires a specialized pipeline (e.g., security audit, ML training, blockchain verification), use action: MODIFY_HARNESS.
+- Include a "harness_payload" object with any of:
+  * new_phases: list of phase dicts to add (each with: id, label, order, max_coder_layer, goal, writer_directive, expert_directive, transition_criteria, next_phase)
+  * remove_phases: list of phase IDs to remove (at least one phase must remain)
+  * new_agents: list of dynamic agent configs (each with: name, active_in_phases, prompt_template, schedule, permissions)
+  * remove_agents: list of agent names to remove
+  * transitions: dict of transition rules to update
+- Dynamic agents have three permission levels:
+  * observer: can only read KB files (default for monitoring agents)
+  * analyst: can read + write KB + create exports (default for new agents)
+  * operator: can also create coder_tasks (requires user approval to grant)
+- Use MODIFY_HARNESS sparingly — only when the project clearly needs domain-specific pipeline stages.
+- Example: adding a "security_audit" phase between mid_2 and late for a Web3 project.
+- harness_payload should be null when not using MODIFY_HARNESS.

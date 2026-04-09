@@ -792,7 +792,7 @@
       <a href="#monitoring">Monitoring</a>
       <a href="#changelog">Changelog</a>
       <a href="https://github.com/Ade1ie/adelie" target="_blank">GitHub ↗</a>
-      <span class="nav-badge">v0.2.15</span>
+      <span class="nav-badge">v0.3.0</span>
     </div>
   </nav>
 
@@ -1635,6 +1635,168 @@
           <h2>Changelog</h2>
         </div>
         <p>All notable changes to Adelie, following <a href="https://keepachangelog.com/" target="_blank">Keep a Changelog</a> format.</p>
+
+        <div class="changelog-entry">
+          <div class="changelog-header" onclick="this.nextElementSibling.classList.toggle('open');this.querySelector('.changelog-expand').textContent=this.nextElementSibling.classList.contains('open')?'▾':'▸'">
+            <span class="changelog-version">0.3.0</span>
+            <span class="changelog-date">2026-04-09</span>
+            <span class="changelog-tag tag-feature">Major</span>
+            <span class="changelog-expand">▾</span>
+          </div>
+          <div class="changelog-body open">
+            <p style="color:var(--text-secondary);margin-bottom:12px;font-size:14px;">Transforms Adelie from a static pipeline executor into a self-configuring, policy-enforced, production-aware AI harness. Consolidates v0.2.16–v0.2.20.</p>
+            <h4>🔧 Meta Harness — Dynamic Pipeline</h4>
+            <ul>
+              <li><strong>HarnessManager</strong> — Dynamic JSON state machine. Expert AI reconfigures pipeline at runtime via <code>MODIFY_HARNESS</code>.</li>
+              <li><strong>DynamicAgent</strong> — Runtime-created agents with 3-tier permissions. Snapshot rollback on failure.</li>
+            </ul>
+            <h4>🛡️ Policy Engine — Declarative Constraints</h4>
+            <ul>
+              <li><strong>PolicyEngine</strong> — Enforces <code>constraints.yaml</code> rules (pattern/ast/file). PolicyGate blocks promotion on violation.</li>
+              <li><strong>AST Checker</strong> — Detects <code>eval()</code>, <code>exec()</code>, wildcard imports, missing docstrings.</li>
+            </ul>
+            <h4>🧠 Memory Harness — Selective Forgetting</h4>
+            <ul>
+              <li><strong>Phase Scope Filter</strong> — KB files visible only during designated phases.</li>
+              <li><strong>Archive Manager</strong> — Auto-archives resolved errors + completed-phase docs. Summary Tree preserves awareness.</li>
+            </ul>
+            <h4>📡 Production Bridge — CI/CD Feedback</h4>
+            <ul>
+              <li><strong>3 Adapters</strong> — GitHub Actions, Sentry, Custom MCP. Critical verdict → ERROR + hotfix.</li>
+              <li><strong>Graceful Degradation</strong> — Missing tokens = adapter silently disabled.</li>
+            </ul>
+            <h4>⛔ Human Intercept &amp; Monitoring</h4>
+            <ul>
+              <li><strong>CLI</strong> — <code>/intercept</code>, <code>/policy</code>, <code>/health</code>, <code>/memory</code>, <code>/harness</code>, enhanced <code>/status</code>.</li>
+              <li><strong>Dashboard</strong> — Intercept button, Production Health, Policy Engine, Memory Harness, Pipeline Visualizer panels.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="changelog-entry">
+          <div class="changelog-header" onclick="this.nextElementSibling.classList.toggle('open');this.querySelector('.changelog-expand').textContent=this.nextElementSibling.classList.contains('open')?'▾':'▸'">
+            <span class="changelog-version">0.2.20</span>
+            <span class="changelog-date">2026-04-09</span>
+            <span class="changelog-tag tag-feature">UI</span>
+            <span class="changelog-expand">▾</span>
+          </div>
+          <div class="changelog-body open">
+            <h4>✨ Added</h4>
+            <ul>
+              <li><strong><code>/intercept</code></strong> — Immediate mid-cycle stop + ERROR state + KB logging.</li>
+              <li><strong><code>/policy</code></strong> — Policy Engine rules &amp; status display.</li>
+              <li><strong><code>/health</code></strong> — Production Bridge verdict &amp; signal monitor.</li>
+              <li><strong><code>/memory</code></strong> — Memory Harness statistics (active/archived/scoped).</li>
+              <li><strong><code>/harness</code></strong> — Pipeline structure &amp; dynamic agent display.</li>
+              <li><strong>Dashboard: Intercept Button</strong> — Emergency ⛔ stop with confirmation modal.</li>
+              <li><strong>Dashboard: Feature Panels</strong> — Production Health, Policy Engine, Memory Harness, Pipeline Visualizer.</li>
+              <li><strong>Dashboard: Feature SSE</strong> — Real-time feature status push on every cycle.</li>
+            </ul>
+            <h4>🔄 Changed</h4>
+            <ul>
+              <li><strong><code>/status</code></strong> — Full system status with all feature states.</li>
+              <li><strong>Cycle Header</strong> — Feature indicators (🛡️ 📡 🧠).</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="changelog-entry">
+          <div class="changelog-header" onclick="this.nextElementSibling.classList.toggle('open');this.querySelector('.changelog-expand').textContent=this.nextElementSibling.classList.contains('open')?'▾':'▸'">
+            <span class="changelog-version">0.2.19</span>
+            <span class="changelog-date">2026-04-09</span>
+            <span class="changelog-tag tag-feature">Feature</span>
+            <span class="changelog-expand">▾</span>
+          </div>
+          <div class="changelog-body open">
+            <h4>✨ Added</h4>
+            <ul>
+              <li><strong>Production Bridge</strong> — Connects AI harness to external CI/CD and monitoring. Three adapters: GitHub Actions, Sentry, Custom MCP.</li>
+              <li><strong>GitHub Actions Adapter</strong> — Polls workflow statuses via REST API or MCP. Detects CI failures as critical signals.</li>
+              <li><strong>Sentry Adapter</strong> — Polls error issues, detects spikes above threshold.</li>
+              <li><strong>Custom MCP Adapter</strong> — Auto-discovers production-related MCP tools.</li>
+              <li><strong><code>PRODUCTION_ALERT</code> HookEvent</strong> — New hook for external alert handling.</li>
+            </ul>
+            <h4>🔄 Changed</h4>
+            <ul>
+              <li><strong>Orchestrator</strong> — Polls bridge at cycle start. Critical → <code>ERROR</code> + KB log + hotfix generation.</li>
+              <li><strong>Expert AI</strong> — Health context injected into decision prompt.</li>
+              <li><strong>Config</strong> — <code>PRODUCTION_BRIDGE_ENABLED</code>, <code>PRODUCTION_POLL_INTERVAL</code>.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="changelog-entry">
+          <div class="changelog-header" onclick="this.nextElementSibling.classList.toggle('open');this.querySelector('.changelog-expand').textContent=this.nextElementSibling.classList.contains('open')?'▾':'▸'">
+            <span class="changelog-version">0.2.18</span>
+            <span class="changelog-date">2026-04-09</span>
+            <span class="changelog-tag tag-feature">Feature</span>
+            <span class="changelog-expand">▾</span>
+          </div>
+          <div class="changelog-body open">
+            <h4>✨ Added</h4>
+            <ul>
+              <li><strong>Memory Harness — Selective Forgetting</strong> — Controls KB visibility per phase. Three mechanisms: Phase Scope Filter, Archive Manager, Summary Tree.</li>
+              <li><strong>Phase Scope Filter</strong> — KB files tagged with <code>phase_scope</code> are only visible during designated phases. Backward compatible.</li>
+              <li><strong>Archive Manager</strong> — Stale errors (3+ cycles) and completed-phase docs auto-archived to <code>archive/</code>, removed from active queries.</li>
+              <li><strong>Summary Tree</strong> — Archived files get 1-2 line summaries in <code>archive/summaries.md</code> for minimal historical context.</li>
+            </ul>
+            <h4>🔄 Changed</h4>
+            <ul>
+              <li><strong>KB Retriever</strong> — <code>query()</code> and <code>semantic_query()</code> now accept <code>current_phase</code> for phase-aware filtering.</li>
+              <li><strong>Context Engine</strong> — Injects archive summaries (5% budget) into agent context.</li>
+              <li><strong>Orchestrator</strong> — Phase transitions trigger automatic KB archiving. Cycle-end maintenance archives resolved errors.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="changelog-entry">
+          <div class="changelog-header" onclick="this.nextElementSibling.classList.toggle('open');this.querySelector('.changelog-expand').textContent=this.nextElementSibling.classList.contains('open')?'▾':'▸'">
+            <span class="changelog-version">0.2.17</span>
+            <span class="changelog-date">2026-04-09</span>
+            <span class="changelog-tag tag-feature">Feature</span>
+            <span class="changelog-expand">▾</span>
+          </div>
+          <div class="changelog-body open">
+            <h4>✨ Added</h4>
+            <ul>
+              <li><strong>Declarative Policy Engine</strong> — Enforces project constraints from <code>.adelie/constraints.yaml</code>. Three rule types: <code>pattern</code> (regex), <code>ast</code> (Python AST), <code>file</code> (metrics). Severity <code>block</code> prevents code promotion.</li>
+              <li><strong>PolicyGate</strong> — Deterministic gate between Reviewer AI and staging promotion. Blocks violating code with automatic Coder retry loop.</li>
+              <li><strong>AST Checker</strong> — Python <code>ast</code>-based analysis: forbidden calls (<code>eval</code>, <code>exec</code>), wildcard imports, missing docstrings.</li>
+              <li><strong>Negative Pattern</strong> — <code>negative_pattern</code> field suppresses false positives (e.g., <code>requests.get</code> with <code>timeout=</code> passes).</li>
+              <li><strong>Policy Prompt Injection</strong> — Active constraints injected into Coder AI and Reviewer AI prompts for prevention at generation time.</li>
+            </ul>
+            <h4>🔄 Changed</h4>
+            <ul>
+              <li><strong>Promotion Gate</strong> — Now requires <code>reviewer_approved AND policy_passed</code>. PolicyGate failure triggers Coder feedback retry.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="changelog-entry">
+          <div class="changelog-header" onclick="this.nextElementSibling.classList.toggle('open');this.querySelector('.changelog-expand').textContent=this.nextElementSibling.classList.contains('open')?'▾':'▸'">
+            <span class="changelog-version">0.2.16</span>
+            <span class="changelog-date">2026-04-09</span>
+            <span class="changelog-tag tag-feature">Feature</span>
+            <span class="changelog-expand">▾</span>
+          </div>
+          <div class="changelog-body open">
+            <h4>✨ Added</h4>
+            <ul>
+              <li><strong>Meta Harness Architecture</strong> — Static 6-phase Enum pipeline replaced with dynamic JSON-based state machine (<code>harness.json</code>). Expert AI can autonomously reconfigure the pipeline at runtime via <code>MODIFY_HARNESS</code> action.</li>
+              <li><strong>HarnessManager</strong> — Core manager: load/save/validate harness configs, snapshot-based rollback, declarative JSON transition criteria.</li>
+              <li><strong>DynamicAgent</strong> — Runtime-configurable agent class. Roles, prompts, constraints defined in harness.json and instantiated on-the-fly.</li>
+              <li><strong>3-Tier Permission Model</strong> — <code>observer</code> → <code>analyst</code> → <code>operator</code> escalation for dynamic agents.</li>
+              <li><strong>Harness Rollback</strong> — Auto-snapshots before modification; failed changes auto-rollback.</li>
+              <li><strong>Orchestrator Phase 5</strong> — New execution phase for dynamic agents with full scheduler integration.</li>
+            </ul>
+            <h4>🔄 Changed</h4>
+            <ul>
+              <li><strong><code>phases.py</code> → Compatibility Shim</strong> — <code>Phase</code> Enum and <code>PHASE_INFO</code> now proxy through HarnessManager. All 17+ import points unchanged.</li>
+              <li><strong>Declarative Transitions</strong> — <code>_check_phase_readiness()</code> uses JSON conditions instead of hardcoded lambdas.</li>
+              <li><strong>Expert AI Schema</strong> — Added <code>MODIFY_HARNESS</code> action and <code>harness_payload</code> field.</li>
+            </ul>
+          </div>
+        </div>
 
         <div class="changelog-entry">
           <div class="changelog-header" onclick="this.nextElementSibling.classList.toggle('open');this.querySelector('.changelog-expand').textContent=this.nextElementSibling.classList.contains('open')?'▾':'▸'">

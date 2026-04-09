@@ -94,11 +94,41 @@ def print_header(goal: str, phase: str, model: str, workspace: str):
 # ── Footer / Status line ─────────────────────────────────────────────────────
 
 def print_cycle_header(iteration: int, phase: str, state: str):
-    """Print a cycle separator."""
+    """Print a cycle separator with feature indicators."""
     width = shutil.get_terminal_size((80, 24)).columns
     console.print()
     console.print(f"  [dim]{'─' * (width - 4)}[/dim]")
-    console.print(f"  [bold cyan]Cycle #{iteration}[/bold cyan] [dim]| {phase} | {state}[/dim]")
+
+    # Build feature indicators
+    indicators = []
+    try:
+        from adelie.policy_engine import PolicyEngine
+        pe = PolicyEngine()
+        rules = pe.load_rules()
+        if rules:
+            indicators.append(f"🛡️{len(rules)}")
+    except Exception:
+        pass
+    try:
+        from adelie.config import PRODUCTION_BRIDGE_ENABLED
+        if PRODUCTION_BRIDGE_ENABLED:
+            from adelie.production_bridge import get_production_bridge
+            v = get_production_bridge().get_verdict().value
+            icon = {"healthy": "🟢", "degraded": "🟡", "critical": "🔴"}.get(v, "⚪")
+            indicators.append(f"📡{icon}")
+    except Exception:
+        pass
+    try:
+        from adelie.memory_harness import get_memory_harness
+        stats = get_memory_harness().get_stats()
+        active = stats.get("total_files", 0)
+        archived = stats.get("archived_count", 0)
+        indicators.append(f"🧠{active}/{archived}")
+    except Exception:
+        pass
+
+    ind_str = f" | {' '.join(indicators)}" if indicators else ""
+    console.print(f"  [bold cyan]Cycle #{iteration}[/bold cyan] [dim]| {phase} | {state}{ind_str}[/dim]")
     console.print()
 
 
@@ -142,10 +172,15 @@ def print_agent_event(name: str, info: AgentInfo):
 HELP_TEXT = """\
 [bold]Commands:[/bold]
   [cyan]/help[/cyan]                 Show this help
-  [cyan]/status[/cyan]               Show orchestrator status
+  [cyan]/status[/cyan]               Full system status (all features)
   [cyan]/pause[/cyan]                Pause before next cycle
   [cyan]/resume[/cyan]               Resume from pause
+  [cyan]/intercept [reason][/cyan]   ⛔ Immediate stop + ERROR state
   [cyan]/feedback <msg>[/cyan]       Send feedback to AI
+  [cyan]/policy[/cyan]               Policy Engine status & rules
+  [cyan]/health[/cyan]               Production health & signals
+  [cyan]/memory[/cyan]               Memory Harness statistics
+  [cyan]/harness[/cyan]              Pipeline structure & agents
   [cyan]/commands[/cyan]             List custom commands
   [cyan]/plan[/cyan]                 Show pending plan (Plan Mode)
   [cyan]/approve[/cyan]              Approve pending plan
@@ -276,6 +311,12 @@ class AdelieApp:
             ds = self._dashboard_state
             if ds:
                 ds.update_cycle(it, ph, st)
+                # Push feature status to dashboard
+                try:
+                    features = self.orchestrator.get_feature_status()
+                    ds.update_features(features)
+                except Exception:
+                    pass
 
         def _on_cycle_metrics(m):
             print_cycle_metrics(m)
@@ -387,6 +428,7 @@ class AdelieApp:
             self._dashboard_state.goal = self.orchestrator.goal or ""
             self._dashboard_state.phase = self.orchestrator.phase or "initial"
             self._dashboard_state.workspace = str(cfg.PROJECT_ROOT)
+            self._dashboard_state._orchestrator = self.orchestrator
             port = getattr(cfg, 'DASHBOARD_PORT', 5042)
             self._dashboard_server = DashboardServer(state=self._dashboard_state, port=port)
             if self._dashboard_server.start():
@@ -438,6 +480,59 @@ class AdelieApp:
                 if agent_parts:
                     console.print("  " + "  ".join(agent_parts))
 
+            # Feature status
+            try:
+                fs = self.orchestrator.get_feature_status()
+
+                # Policy
+                pol = fs.get("policy", {})
+                if pol.get("active"):
+                    rule_types = {}
+                    for r in pol.get("rules", []):
+                        t = r.get("type", "?")
+                        rule_types[t] = rule_types.get(t, 0) + 1
+                    type_str = ", ".join(f"{v} {k}" for k, v in rule_types.items())
+                    console.print(f"  [dim]🛡️ Policy Engine:[/dim] {pol['rule_count']} rules ({type_str})")
+                else:
+                    console.print("  [dim]🛡️ Policy Engine:[/dim] [dim]no rules loaded[/dim]")
+
+                # Memory
+                mem = fs.get("memory", {})
+                if mem.get("active"):
+                    console.print(
+                        f"  [dim]🧠 Memory Harness:[/dim] "
+                        f"{mem.get('total_files', 0)} active / "
+                        f"{mem.get('archived_count', 0)} archived / "
+                        f"{mem.get('phase_scoped_files', 0)} scoped"
+                    )
+                else:
+                    console.print("  [dim]🧠 Memory Harness:[/dim] [dim]inactive[/dim]")
+
+                # Production
+                prod = fs.get("production", {})
+                if prod.get("enabled"):
+                    verdict = prod.get("verdict", "healthy").upper()
+                    adapters = ", ".join(prod.get("adapters", []))
+                    v_color = {"HEALTHY": "green", "DEGRADED": "yellow", "CRITICAL": "red"}.get(verdict, "dim")
+                    console.print(
+                        f"  [dim]📡 Production:[/dim] [{v_color}]{verdict}[/{v_color}]"
+                        f" ({adapters or 'no adapters'})"
+                    )
+                else:
+                    console.print("  [dim]📡 Production:[/dim] [dim]disabled[/dim]")
+
+                # Harness
+                har = fs.get("harness", {})
+                dyn = har.get("dynamic_agent_count", 0)
+                dyn_str = f" + {dyn} dynamic" if dyn else ""
+                console.print(
+                    f"  [dim]🔧 Pipeline:[/dim] "
+                    f"{har.get('phase_count', 6)} phases, "
+                    f"{har.get('agent_count', 13)} agents{dyn_str}"
+                )
+            except Exception:
+                pass
+
         elif cmd == "/pause":
             if getattr(self.orchestrator, "_pause_requested", False):
                 console.print("[yellow]Already paused.[/yellow]")
@@ -451,6 +546,124 @@ class AdelieApp:
             else:
                 self.orchestrator.resume()
                 console.print("[green]Resuming…[/green]")
+
+        elif cmd == "/intercept":
+            reason = args.strip() if args else "User intercept via CLI"
+            result = self.orchestrator.intercept(reason)
+            console.print(
+                f"[bold red]⛔ INTERCEPTED[/bold red]\n"
+                f"  Cycle: #{result['cycle']}\n"
+                f"  State: {result['old_state']} → [red]error[/red]\n"
+                f"  Reason: {reason}\n"
+                f"  [dim]Use /resume to continue with recovery flow.[/dim]"
+            )
+
+        elif cmd == "/policy":
+            try:
+                from adelie.policy_engine import PolicyEngine
+                pe = PolicyEngine()
+                rules = pe.load_rules()
+                if rules:
+                    console.print(f"[bold]🛡️ Policy Engine[/bold] — {len(rules)} rules from constraints.yaml\n")
+                    for i, r in enumerate(rules, 1):
+                        rtype = r.get('type', '?')
+                        rname = r.get('name', f'rule_{i}')
+                        desc = r.get('description', r.get('pattern', ''))
+                        console.print(f"  {i}. [cyan][{rtype}][/cyan] {rname}: {desc[:80]}")
+                else:
+                    console.print("[dim]🛡️ No policy rules loaded. Create .adelie/constraints.yaml[/dim]")
+            except Exception as e:
+                console.print(f"[dim]🛡️ Policy Engine unavailable: {e}[/dim]")
+
+        elif cmd == "/health":
+            try:
+                from adelie.config import PRODUCTION_BRIDGE_ENABLED
+                if not PRODUCTION_BRIDGE_ENABLED:
+                    console.print("[dim]📡 Production Bridge disabled. Set PRODUCTION_BRIDGE_ENABLED=true[/dim]")
+                else:
+                    from adelie.production_bridge import get_production_bridge
+                    bridge = get_production_bridge()
+                    stats = bridge.get_stats()
+                    verdict = stats.get('verdict', 'healthy').upper()
+                    v_color = {"HEALTHY": "green", "DEGRADED": "yellow", "CRITICAL": "red"}.get(verdict, "dim")
+                    console.print(
+                        f"[bold]📡 Production Health:[/bold] [{v_color}]{verdict}[/{v_color}]\n"
+                        f"  Adapters: {', '.join(stats.get('adapters', [])) or 'none'}\n"
+                        f"  Signals: {stats.get('signal_count', 0)}"
+                    )
+                    # Show recent signals
+                    collector = bridge._collector
+                    if collector and collector._recent_signals:
+                        console.print()
+                        for s in list(collector._recent_signals)[-5:]:
+                            s_color = {"critical": "red", "warn": "yellow"}.get(s.severity, "dim")
+                            console.print(f"  [{s_color}][{s.severity}][/{s_color}] [{s.source}] {s.title}")
+            except Exception as e:
+                console.print(f"[dim]📡 Production Bridge error: {e}[/dim]")
+
+        elif cmd == "/memory":
+            try:
+                from adelie.memory_harness import get_memory_harness
+                mh = get_memory_harness()
+                stats = mh.get_stats()
+                console.print(
+                    f"[bold]🧠 Memory Harness[/bold]\n"
+                    f"  Active KB files: {stats.get('total_files', 0)}\n"
+                    f"  Phase-scoped: {stats.get('phase_scoped_files', 0)}\n"
+                    f"  Archived: {stats.get('archived_count', 0)}\n"
+                    f"  Current phase: {self.orchestrator.phase}"
+                )
+                # Show archived files if any
+                archived = stats.get('archived_files', [])
+                if archived:
+                    console.print("\n  [dim]Recent archives:[/dim]")
+                    for af in archived[:5]:
+                        console.print(f"    [dim]→ {af}[/dim]")
+            except Exception as e:
+                console.print(f"[dim]🧠 Memory Harness unavailable: {e}[/dim]")
+
+        elif cmd == "/harness":
+            try:
+                from adelie.harness_manager import get_manager as get_harness_manager
+                hm = get_harness_manager()
+                harness = hm.get_current_harness()
+                phases = harness.get("phases", [])
+                agents = harness.get("agents", [])
+                current = self.orchestrator.phase
+
+                console.print("[bold]🔧 Pipeline Structure[/bold]\n")
+
+                # Phase flow
+                if phases:
+                    phase_parts = []
+                    for p in phases:
+                        name = p.get("name", p) if isinstance(p, dict) else str(p)
+                        if name == current:
+                            phase_parts.append(f"[bold cyan]»{name}«[/bold cyan]")
+                        else:
+                            phase_parts.append(f"[dim]{name}[/dim]")
+                    console.print("  " + " → ".join(phase_parts))
+                else:
+                    console.print("  initial → mid → mid_1 → mid_2 → late → evolve")
+
+                # Agents
+                console.print(f"\n  Agents ({len(agents)}):")
+                static_agents = [a for a in agents if not a.get("dynamic")]
+                dynamic_agents = [a for a in agents if a.get("dynamic")]
+                if static_agents:
+                    names = [a.get("name", "?") for a in static_agents]
+                    console.print(f"    Static: {', '.join(names)}")
+                if dynamic_agents:
+                    for da in dynamic_agents:
+                        console.print(f"    [cyan]Dynamic: {da.get('name', '?')}[/cyan] — {da.get('description', '')}")
+            except Exception as e:
+                console.print(
+                    f"[bold]🔧 Pipeline Structure[/bold]\n\n"
+                    f"  [dim]initial → mid → mid_1 → mid_2 → late → evolve[/dim]\n"
+                    f"  Current: [cyan]{self.orchestrator.phase}[/cyan]\n"
+                    f"  Agents: 13 (static)\n"
+                    f"  [dim]{e}[/dim]"
+                )
 
         elif cmd == "/feedback":
             if not args.strip():

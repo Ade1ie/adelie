@@ -77,11 +77,21 @@ def run_review(
         else:
             file_contents.append(f"--- {fp} --- (file not found)")
 
+    # Get active policy constraints summary
+    policy_section = ""
+    try:
+        from adelie.policy_engine import PolicyEngine
+        engine = PolicyEngine()
+        policy_section = engine.get_prompt_summary()
+    except Exception:
+        pass
+
     user_prompt = (
         f"## Coder: {coder_name}\n"
         f"## Files to Review\n\n"
         + "\n\n".join(file_contents)
         + f"\n\n{get_context_prompt_section()}{get_rules_prompt_section()}{get_skills_prompt_section('reviewer')}"
+        + policy_section
         + "\n\nReview these files and output a JSON object."
     )
 

@@ -84,14 +84,15 @@ def list_categories() -> dict[str, int]:
 
 # ── Situational query ─────────────────────────────────────────────────────────
 
-def query(situation: str, extra_tags: Optional[list[str]] = None) -> list[Path]:
+def query(situation: str, extra_tags: Optional[list[str]] = None, current_phase: Optional[str] = None) -> list[Path]:
     """
     Return a list of KB file Paths most relevant to the current situation.
 
     Args:
-        situation:  One of the keys in SITUATION_CATEGORY_MAP
-                    ('error', 'new_logic', 'export', 'maintenance', 'normal')
-        extra_tags: Additional tags to filter by (optional)
+        situation:     One of the keys in SITUATION_CATEGORY_MAP
+                       ('error', 'new_logic', 'export', 'maintenance', 'normal')
+        extra_tags:    Additional tags to filter by (optional)
+        current_phase: If provided, filter results to only files visible in this phase
 
     Returns:
         Ordered list of Path objects — most specific categories first.
@@ -121,6 +122,15 @@ def query(situation: str, extra_tags: Optional[list[str]] = None) -> list[Path]:
         if p not in seen:
             seen.add(p)
             deduped.append(p)
+
+    # Phase scope filtering (selective forgetting)
+    if current_phase:
+        try:
+            from adelie.memory_harness import get_memory_harness
+            harness = get_memory_harness()
+            deduped = harness.filter_by_phase(deduped, current_phase)
+        except Exception:
+            pass  # Filter unavailable — return unfiltered
 
     return deduped
 
@@ -166,22 +176,24 @@ def semantic_query(
     query_text: str = "",
     extra_tags: Optional[list[str]] = None,
     max_results: int = 8,
+    current_phase: Optional[str] = None,
 ) -> list[Path]:
     """
     Hybrid search: combines tag-based category matching with
     semantic embedding search for more accurate retrieval.
 
     Args:
-        situation:   Current system situation (for tag-based search)
-        query_text:  Natural language query for semantic matching
-        extra_tags:  Additional tag filters
-        max_results: Maximum number of files to return
+        situation:     Current system situation (for tag-based search)
+        query_text:    Natural language query for semantic matching
+        extra_tags:    Additional tag filters
+        max_results:   Maximum number of files to return
+        current_phase: If provided, filter results to only files visible in this phase
 
     Returns:
         Ordered list of Path objects — best matches first.
     """
-    # 1. Tag-based results (always available)
-    tag_results = query(situation, extra_tags)
+    # 1. Tag-based results (always available, phase-aware)
+    tag_results = query(situation, extra_tags, current_phase=current_phase)
 
     # 2. Semantic results (if embeddings available)
     semantic_results: list[Path] = []
@@ -210,6 +222,15 @@ def semantic_query(
         if p not in seen:
             seen.add(p)
             merged.append(p)
+
+    # Phase scope filtering on merged results
+    if current_phase:
+        try:
+            from adelie.memory_harness import get_memory_harness
+            harness = get_memory_harness()
+            merged = harness.filter_by_phase(merged, current_phase)
+        except Exception:
+            pass
 
     return merged[:max_results]
 
