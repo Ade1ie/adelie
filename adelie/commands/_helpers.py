@@ -171,7 +171,8 @@ def _detect_os() -> dict:
                 osrel = Path("/etc/os-release").read_text()
                 for line in osrel.splitlines():
                     if line.startswith("PRETTY_NAME="):
-                        os_name = f"Linux ({line.split('=', 1)[1].strip('\"')})"
+                        pretty = line.split("=", 1)[1].strip('"')
+                        os_name = f"Linux ({pretty})"
                         break
             except Exception:
                 pass

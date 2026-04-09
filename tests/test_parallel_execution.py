@@ -96,7 +96,8 @@ class TestThreadPoolExecution:
 
         with ThreadPoolExecutor(max_workers=1) as pool:
             futures = {pool.submit(very_slow_agent): "slow"}
-            with pytest.raises(TimeoutError):
+            import concurrent.futures
+            with pytest.raises((TimeoutError, concurrent.futures.TimeoutError)):
                 for future in as_completed(futures, timeout=0.2):
                     future.result()
 

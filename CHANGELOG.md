@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.2.13] - 2026-04-09
+
+### Fixed
+- **Python 3.9 compatibility** — Fixed a SyntaxError in `_helpers.py` where a backslash was used inside an f-string expression, which is not supported in Python versions older than 3.12.
+
 ## [0.2.12] - 2026-03-29
 
 ### Fixed

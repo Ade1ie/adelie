@@ -67,7 +67,12 @@ class TestBrowserSearchFallbackIntegration:
             "429 RESOURCE_EXHAUSTED: quota exceeded"
         )
 
-        with patch("google.genai.Client", return_value=mock_client):
+        mock_google = MagicMock()
+        mock_genai = MagicMock()
+        mock_genai.Client = MagicMock(return_value=mock_client)
+        mock_google.genai = mock_genai
+
+        with patch.dict("sys.modules", {"google": mock_google, "google.genai": mock_genai}):
             with patch(
                 "adelie.web_search._search_browser_fallback",
                 return_value=mock_browser_result,
@@ -143,7 +148,10 @@ class TestBrowserSearchModule:
         mock_browser.new_context.return_value = mock_context
         mock_context.new_page.return_value = mock_page
 
-        with patch("playwright.sync_api.sync_playwright", return_value=mock_pw_manager):
+        mock_playwright = MagicMock()
+        mock_playwright.sync_api.sync_playwright = MagicMock(return_value=mock_pw_manager)
+
+        with patch.dict("sys.modules", {"playwright": mock_playwright, "playwright.sync_api": mock_playwright.sync_api}):
             with patch("adelie.browser_search._google_search", return_value=[
                 {"title": "Result 1", "url": "https://example.com", "snippet": "snippet"},
             ]):
