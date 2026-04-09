@@ -26,14 +26,16 @@ from pathlib import Path
 
 from rich.console import Console
 
-from adelie.config import WORKSPACE_PATH, PROJECT_ROOT, SANDBOX_MODE
+import adelie.config as cfg
 from adelie.llm_client import generate
 from adelie.tool_registry import get_registry as get_tool_registry
 
 console = Console()
 
-RUNNER_ROOT = WORKSPACE_PATH.parent / "runner"
-PROCESS_FILE = RUNNER_ROOT / "processes.json"
+def _get_runner_dirs():
+    import adelie.config as cfg
+    runner_root = cfg.WORKSPACE_PATH.parent / "runner"
+    return runner_root, runner_root / "processes.json"
 
 _IS_WINDOWS = sys.platform == "win32"
 
@@ -299,7 +301,8 @@ def _extract_port(cmd: str) -> int | None:
 
 def _save_process(pid: int, cmd: str, description: str, port: int | None = None) -> None:
     """Track a background process with optional port info."""
-    RUNNER_ROOT.mkdir(parents=True, exist_ok=True)
+    runner_root, process_file = _get_runner_dirs()
+    runner_root.mkdir(parents=True, exist_ok=True)
     processes = _load_processes()
 
     entry = {
@@ -313,14 +316,17 @@ def _save_process(pid: int, cmd: str, description: str, port: int | None = None)
     if detected_port:
         entry["port"] = detected_port
     processes.append(entry)
-    PROCESS_FILE.write_text(json.dumps(processes, indent=2), encoding="utf-8")
+    
+    _, process_file = _get_runner_dirs()
+    process_file.write_text(json.dumps(processes, indent=2), encoding="utf-8")
 
 
 def _load_processes() -> list[dict]:
     """Load tracked processes."""
-    if PROCESS_FILE.exists():
+    _, process_file = _get_runner_dirs()
+    if process_file.exists():
         try:
-            return json.loads(PROCESS_FILE.read_text(encoding="utf-8"))
+            return json.loads(process_file.read_text(encoding="utf-8"))
         except Exception:
             pass
     return []
@@ -328,7 +334,8 @@ def _load_processes() -> list[dict]:
 
 def _cleanup_dead_processes() -> None:
     """Remove dead processes from tracking file."""
-    if not PROCESS_FILE.exists():
+    runner_root, process_file = _get_runner_dirs()
+    if not process_file.exists():
         return
     import os
     processes = _load_processes()
@@ -350,8 +357,9 @@ def _cleanup_dead_processes() -> None:
                 is_alive = False
             if is_alive:
                 alive.append(proc)
-    RUNNER_ROOT.mkdir(parents=True, exist_ok=True)
-    PROCESS_FILE.write_text(json.dumps(alive, indent=2), encoding="utf-8")
+    runner_root, process_file = _get_runner_dirs()
+    runner_root.mkdir(parents=True, exist_ok=True)
+    process_file.write_text(json.dumps(alive, indent=2), encoding="utf-8")
 
 
 def _is_similar_running(description: str) -> int | None:
@@ -396,7 +404,7 @@ def run_pipeline(
         Summary of execution results.
     """
     if workspace_root is None:
-        workspace_root = PROJECT_ROOT
+        workspace_root = cfg.PROJECT_ROOT
 
     console.print(f"[bold blue]🚀 Runner AI[/bold blue] — tier: {max_tier}")
 
@@ -409,7 +417,7 @@ def run_pipeline(
 
     # ── Sandbox Mode ──────────────────────────────────────────────────────
     from adelie.sandbox import get_effective_mode, get_sandbox_summary, SandboxMode
-    sandbox_mode = get_effective_mode(SANDBOX_MODE)
+    sandbox_mode = get_effective_mode(cfg.SANDBOX_MODE)
     if sandbox_mode != SandboxMode.NONE:
         console.print(f"  [dim]{get_sandbox_summary(sandbox_mode)}[/dim]")
 
@@ -475,7 +483,8 @@ def run_pipeline(
         else:
             return {"executed": 0, "succeeded": 0, "failed": 0, "errors": []}
 
-    RUNNER_ROOT.mkdir(parents=True, exist_ok=True)
+    runner_root, _ = _get_runner_dirs()
+    runner_root.mkdir(parents=True, exist_ok=True)
 
     tier_order = ["build", "run", "deploy"]
     max_idx = tier_order.index(max_tier) if max_tier in tier_order else 0
@@ -563,7 +572,8 @@ def run_pipeline(
 
     # Save log
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_path = RUNNER_ROOT / f"{max_tier}_log_{ts}.md"
+    runner_root, _ = _get_runner_dirs()
+    log_path = runner_root / f"{max_tier}_log_{ts}.md"
 
     report = (
         f"# Runner Log — {datetime.now().isoformat(timespec='seconds')}\n"

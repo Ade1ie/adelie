@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.2.15] - 2026-04-09
+
+### Fixed
+- **Testing & Sandbox Paths** — Added proper shell-quoting around interpolated directory paths to prevent testing and sandbox environment failures when the project directory contains spaces. 
+- **Configuration Reloading Bug** — Transitioned `WORKSPACE_PATH` and `PROJECT_ROOT` direct module imports to dynamic property lookups in `tester_ai.py`, `runner_ai.py`, and `sandbox.py` to correctly reflect CLI context updates.
+- **Version Integrity** — Synchronized `pyproject.toml` and `docs/index.html` to reflect the current deployment version alongside global builds.
+
 ## [0.2.14] - 2026-04-09
 
 ### Fixed

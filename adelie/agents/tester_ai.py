@@ -24,14 +24,11 @@ from pathlib import Path
 
 from rich.console import Console
 
-from adelie.config import WORKSPACE_PATH, PROJECT_ROOT
+import adelie.config as cfg
 from adelie.llm_client import generate
 
 console = Console()
 
-TEST_ROOT = WORKSPACE_PATH.parent / "tests"
-SCRIPTS_DIR = TEST_ROOT / "scripts"
-RESULTS_DIR = TEST_ROOT / "results"
 
 # Security: only these command prefixes are allowed
 ALLOWED_COMMANDS = [
@@ -154,7 +151,7 @@ def run_tests(
         Summary dict with test results.
     """
     if workspace_root is None:
-        workspace_root = PROJECT_ROOT
+        workspace_root = cfg.PROJECT_ROOT
 
     if not source_files:
         return {"total_tests": 0, "passed": 0, "failed": 0}
@@ -240,8 +237,10 @@ def run_tests(
         return {"total_tests": 0, "passed": 0, "failed": 0}
 
     # Ensure directories
-    SCRIPTS_DIR.mkdir(parents=True, exist_ok=True)
-    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    scripts_dir = workspace_root / ".adelie" / "tests" / "scripts"
+    results_dir = workspace_root / ".adelie" / "tests" / "results"
+    scripts_dir.mkdir(parents=True, exist_ok=True)
+    results_dir.mkdir(parents=True, exist_ok=True)
 
     total = 0
     passed = 0
@@ -262,7 +261,7 @@ def run_tests(
             continue
 
         # Write test script (ensure parent dirs exist for nested paths)
-        script_path = SCRIPTS_DIR / filename
+        script_path = scripts_dir / filename
         script_path.parent.mkdir(parents=True, exist_ok=True)
         script_path.write_text(content, encoding="utf-8")
 
@@ -270,18 +269,18 @@ def run_tests(
         lang = script.get("language", "python")
         if lang in ("python", "py"):
             python = env_profile.python_bin or "python"
-            run_cmd = f"{python} -m pytest {script_path} -v --tb=short"
+            run_cmd = f'{python} -m pytest "{script_path}" -v --tb=short'
         elif lang in ("javascript", "js", "typescript", "ts"):
             ext = script_path.suffix.lower()
             if ext in (".ts", ".tsx", ".jsx"):
                 # TypeScript/JSX: use npx tsx to execute directly
                 # (vitest's include patterns conflict with Tester AI naming)
-                run_cmd = f"npx tsx {script_path}"
+                run_cmd = f'npx tsx "{script_path}"'
             else:
-                run_cmd = f"node {script_path}"
+                run_cmd = f'node "{script_path}"'
         else:
             # Fall back to LLM-provided command if language unknown
-            run_cmd = script.get("run_command", f"python {script_path}")
+            run_cmd = script.get("run_command", f'python "{script_path}"')
 
         # Wrap command with environment strategy
         run_cmd = wrap_command(run_cmd, env_profile, env_strategy)
@@ -316,7 +315,7 @@ def run_tests(
 
     # Save results
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    result_path = RESULTS_DIR / f"test_run_{ts}.md"
+    result_path = results_dir / f"test_run_{ts}.md"
 
     report = (
         f"# Test Results — {datetime.now().isoformat(timespec='seconds')}\n\n"

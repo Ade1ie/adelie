@@ -33,11 +33,8 @@ class TestRunnerAI:
         assert _is_allowed("shutdown now", "deploy") is False
 
     def test_process_tracking(self, tmp_workspace, monkeypatch):
-        from adelie.agents.runner_ai import _save_process, RUNNER_ROOT
+        from adelie.agents.runner_ai import _save_process
         runner_root = tmp_workspace / ".adelie" / "runner"
-        import adelie.agents.runner_ai as rn
-        monkeypatch.setattr(rn, "RUNNER_ROOT", runner_root)
-        monkeypatch.setattr(rn, "PROCESS_FILE", runner_root / "processes.json")
 
         _save_process(12345, "python server.py", "Test server")
 
@@ -49,8 +46,6 @@ class TestRunnerAI:
 
     def test_handles_invalid_json(self, tmp_workspace, monkeypatch):
         import adelie.agents.runner_ai as rn
-        monkeypatch.setattr(rn, "WORKSPACE_PATH", tmp_workspace / ".adelie" / "kb")
-        monkeypatch.setattr(rn, "RUNNER_ROOT", tmp_workspace / ".adelie" / "runner")
 
         with patch("adelie.agents.runner_ai.generate") as mock_gen:
             mock_gen.return_value = "NOT JSON"

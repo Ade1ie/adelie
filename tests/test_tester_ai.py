@@ -43,10 +43,6 @@ class TestTesterAI:
 
     def test_generates_and_saves_scripts(self, tmp_workspace, monkeypatch):
         import adelie.agents.tester_ai as t
-        monkeypatch.setattr(t, "WORKSPACE_PATH", tmp_workspace / ".adelie" / "kb")
-        monkeypatch.setattr(t, "TEST_ROOT", tmp_workspace / ".adelie" / "tests")
-        monkeypatch.setattr(t, "SCRIPTS_DIR", tmp_workspace / ".adelie" / "tests" / "scripts")
-        monkeypatch.setattr(t, "RESULTS_DIR", tmp_workspace / ".adelie" / "tests" / "results")
 
         (tmp_workspace / "src").mkdir()
         (tmp_workspace / "src" / "math.py").write_text("def add(a,b): return a+b", encoding="utf-8")
@@ -66,10 +62,6 @@ class TestTesterAI:
 
     def test_skips_higher_layer_tests(self, tmp_workspace, monkeypatch):
         import adelie.agents.tester_ai as t
-        monkeypatch.setattr(t, "WORKSPACE_PATH", tmp_workspace / ".adelie" / "kb")
-        monkeypatch.setattr(t, "TEST_ROOT", tmp_workspace / ".adelie" / "tests")
-        monkeypatch.setattr(t, "SCRIPTS_DIR", tmp_workspace / ".adelie" / "tests" / "scripts")
-        monkeypatch.setattr(t, "RESULTS_DIR", tmp_workspace / ".adelie" / "tests" / "results")
 
         scripts_with_layers = {
             "test_scripts": [

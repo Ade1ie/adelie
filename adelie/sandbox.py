@@ -26,7 +26,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Optional
 
-from adelie.config import PROJECT_ROOT
+import adelie.config as cfg
 
 
 class SandboxMode(str, Enum):
@@ -92,7 +92,7 @@ def _get_seatbelt_profile(project_root: Path | None = None) -> str:
     Get the Seatbelt profile contents.
     If .adelie/sandbox.sb exists, use that. Otherwise, use the default.
     """
-    root = project_root or PROJECT_ROOT
+    root = project_root or cfg.PROJECT_ROOT
     adelie_dir = root / ".adelie" if (root / ".adelie").exists() else None
 
     # Check for user-defined profile
@@ -112,7 +112,7 @@ def _write_seatbelt_profile(project_root: Path | None = None) -> Path:
     """
     Write the Seatbelt profile to a temp file and return its path.
     """
-    root = project_root or PROJECT_ROOT
+    root = project_root or cfg.PROJECT_ROOT
     profile_content = _get_seatbelt_profile(root)
 
     # Write to a temp file in .adelie/
@@ -128,7 +128,7 @@ def export_seatbelt_profile(project_root: Path | None = None) -> Path:
     Export the default Seatbelt profile to .adelie/sandbox.sb for user customization.
     Returns the path of the exported file.
     """
-    root = project_root or PROJECT_ROOT
+    root = project_root or cfg.PROJECT_ROOT
     adelie_dir = root / ".adelie"
     adelie_dir.mkdir(parents=True, exist_ok=True)
 
@@ -219,7 +219,7 @@ def _wrap_docker(
     if not is_docker_available():
         return cmd  # Fallback to no sandbox
 
-    root = project_root or PROJECT_ROOT
+    root = project_root or cfg.PROJECT_ROOT
     config = load_docker_config(root)
     image = docker_image or config.image
 
