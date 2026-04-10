@@ -30,7 +30,7 @@ class TestScaffoldingNeed:
         from adelie.agents.expert_ai import _get_scaffolding_need
         result = _get_scaffolding_need()
 
-        assert "CRITICAL" in result
+        assert "SCAFFOLDING NOTE" in result
         assert "index.html" in result
         assert "package.json" in result
         assert "tsconfig.json" in result

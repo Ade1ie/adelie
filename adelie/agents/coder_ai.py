@@ -44,6 +44,41 @@ Output a single valid JSON array of files to create/update."""
 SYSTEM_PROMPT = load_prompt("coder", _FALLBACK_PROMPT)
 
 
+def _get_framework_guidelines(framework: str) -> str:
+    """Return framework-specific coding rules to inject into coder prompt."""
+    guidelines = {
+        "nextjs": (
+            "\n## ⚠️ Next.js App Router — MANDATORY Rules\n"
+            "- Any component using useState, useEffect, onClick, or other client hooks "
+            "MUST start with `'use client';` as the FIRST line.\n"
+            "- `layout.tsx` is a SERVER component — NEVER use client-side hooks, "
+            "context providers, or event handlers in it without `'use client'`.\n"
+            "- Dynamic routes use `[param]`, `[...catch]`, `[[...optional]]` syntax — "
+            "these are valid directory names.\n"
+            "- API routes go in `src/app/api/` as `route.ts` files.\n"
+            "- Use `next/navigation` (not `next/router`) for App Router.\n"
+            "- The package name for lucide icons is `lucide-react` (NOT `@lucide/react`).\n\n"
+        ),
+        "nuxt": (
+            "\n## ⚠️ Nuxt 3 — MANDATORY Rules\n"
+            "- Use `<script setup lang='ts'>` for composition API.\n"
+            "- Auto-imports: `ref`, `computed`, `useRoute` etc. are auto-imported.\n"
+            "- Pages go in `pages/`, layouts in `layouts/`.\n\n"
+        ),
+        "sveltekit": (
+            "\n## ⚠️ SvelteKit — MANDATORY Rules\n"
+            "- Pages go in `src/routes/` as `+page.svelte`.\n"
+            "- Server-only code uses `+page.server.ts` or `+server.ts`.\n"
+            "- Layouts use `+layout.svelte`.\n\n"
+        ),
+        "vite": (
+            "\n## ⚠️ Vite + React — MANDATORY Rules\n"
+            "- Entry point is `index.html` referencing `src/main.tsx`.\n"
+            "- Use `vite.config.ts` with `@vitejs/plugin-react`.\n\n"
+        ),
+    }
+    return guidelines.get(framework, "")
+
 def _get_coder_log_dir(layer: int, coder_name: str) -> Path:
     """Get or create the log directory for a coder."""
     log_dir = CODER_ROOT / "layer" / str(layer) / coder_name
@@ -173,6 +208,16 @@ def run_coder(
         f"## Existing Source Files\n{existing}\n\n"
         f"## Lower Layer Coder Logs\n{lower_logs}\n\n"
     )
+
+    # Bug #7: Inject framework-specific coding rules to prevent common mistakes
+    try:
+        from adelie.agents.expert_ai import _detect_framework
+        fw = _detect_framework(workspace_root)
+        fw_guidelines = _get_framework_guidelines(fw)
+        if fw_guidelines:
+            user_prompt += fw_guidelines
+    except Exception:
+        pass
 
     if feedback:
         user_prompt += (

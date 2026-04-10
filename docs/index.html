@@ -792,7 +792,7 @@
       <a href="#monitoring">Monitoring</a>
       <a href="#changelog">Changelog</a>
       <a href="https://github.com/Ade1ie/adelie" target="_blank">GitHub ↗</a>
-      <span class="nav-badge">v0.3.2</span>
+      <span class="nav-badge">v0.3.3</span>
     </div>
   </nav>
 
@@ -1635,6 +1635,25 @@
           <h2>Changelog</h2>
         </div>
         <p>All notable changes to Adelie, following <a href="https://keepachangelog.com/" target="_blank">Keep a Changelog</a> format.</p>
+
+        <div class="changelog-entry">
+          <div class="changelog-header" onclick="this.nextElementSibling.classList.toggle('open');this.querySelector('.changelog-expand').textContent=this.nextElementSibling.classList.contains('open')?'▾':'▸'">
+            <span class="changelog-version">0.3.3</span>
+            <span class="changelog-date">2026-04-10</span>
+            <span class="changelog-tag tag-fix">Fix</span>
+            <span class="changelog-expand">▾</span>
+          </div>
+          <div class="changelog-body open">
+            <h4>🐛 Fixed</h4>
+            <ul>
+              <li><strong>Review Failure Logging</strong> — Rejected code details now logged to KB errors, preventing Expert AI from re-issuing identical failing tasks.</li>
+              <li><strong>Expert AI Context Gap</strong> — <code>last_coder_result</code> now included in system state for cycle-to-cycle continuity.</li>
+              <li><strong>Reviewer Staging Path</strong> — Reviewer now reads from <code>STAGING_ROOT</code> instead of <code>PROJECT_ROOT</code>.</li>
+              <li><strong>Scaffolding Warning Severity</strong> — Reduced from <code>⚠️ CRITICAL</code> to <code>ℹ️ NOTE</code> to prevent model over-reaction.</li>
+              <li><strong>Framework-Specific Coder Guidelines</strong> — Next.js <code>'use client'</code> rules, correct package names, etc. injected into Coder prompt.</li>
+            </ul>
+          </div>
+        </div>
 
         <div class="changelog-entry">
           <div class="changelog-header" onclick="this.nextElementSibling.classList.toggle('open');this.querySelector('.changelog-expand').textContent=this.nextElementSibling.classList.contains('open')?'▾':'▸'">

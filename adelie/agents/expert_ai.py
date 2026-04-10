@@ -444,8 +444,9 @@ def _get_scaffolding_need() -> str:
         return ""
 
     lines = [
-        "⚠️ CRITICAL: The following entry files are MISSING. Without them, the build WILL FAIL.",
-        "Create a 'project_scaffolding' coder task (layer 0) to generate these BEFORE any feature tasks:",
+        "ℹ️ SCAFFOLDING NOTE: The following entry files are missing.",
+        "If no scaffolding coder has been created yet, create ONE scaffolding task (layer 0).",
+        "If scaffolding was ALREADY attempted in a previous cycle, SKIP this and focus on feature tasks:",
     ]
     for c in checks:
         lines.append(f"  - {c['file']}: {c['desc']}")

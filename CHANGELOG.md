@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
+## [0.3.3] - 2026-04-10
+
+### Fixed
+- **Review Failure Logging** — When Reviewer AI rejects code after max retries, the failure details (files, issues, summary) are now logged to `.adelie/errors/review_failure_{cycle}.md` and indexed in KB. This prevents Expert AI from re-issuing the exact same failing coder task in subsequent cycles.
+- **Expert AI Context Gap** — Expert AI now receives `last_coder_result` in `system_state`, including files written count, reviewer approval status, review score, and summary from the previous cycle. This provides cycle-to-cycle continuity so the Expert can make informed decisions.
+- **Reviewer Staging Path** — Reviewer AI was reading files from `PROJECT_ROOT` instead of `STAGING_ROOT`, meaning it reviewed stale/missing files since Coder writes to staging before promotion. Now correctly passes `STAGING_ROOT` to `run_review()`.
+- **Scaffolding Warning Severity** — Reduced `_get_scaffolding_need()` warning from `⚠️ CRITICAL` to `ℹ️ NOTE`. Weaker models (e.g., gemma4) over-reacted to the harsh warning, ignoring all feature tasks to repeatedly attempt scaffolding. Now includes guidance to skip if already attempted.
+- **Framework-Specific Coder Guidelines** — Coder AI now receives framework-aware coding rules (Next.js App Router `'use client'` requirements, `next/navigation` usage, correct package names like `lucide-react`, etc.) injected into the prompt based on `_detect_framework()` result. Prevents common model hallucinations like missing `'use client'` or using non-existent packages.
+
 ## [0.3.2] - 2026-04-10
 
 ### Added

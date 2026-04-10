@@ -112,6 +112,9 @@ class Orchestrator:
         self._last_assembled_contexts: list | None = None
         self._last_build_errors: list[dict] = []
 
+        # Track coder/reviewer results for next cycle's Expert AI context (Bug #4)
+        self._last_coder_result: dict | None = None
+
         # Auto-scan: if KB is empty and project has existing code, scan first
         self._auto_scan_done = False
 
@@ -181,6 +184,10 @@ class Orchestrator:
         # Include recent build errors for Expert AI context
         if self._last_build_errors:
             state["build_errors"] = self._last_build_errors[:3]  # 최대 3개
+        # Include last cycle's coder/reviewer result so Expert AI can avoid
+        # re-issuing tasks that previously failed (Bug #4)
+        if self._last_coder_result:
+            state["last_coder_result"] = self._last_coder_result
         return state
 
     def get_agent_context(self, agent_type: AgentType | str) -> dict:
@@ -976,7 +983,10 @@ class Orchestrator:
                     )] or all_written_files
 
                     for retry in range(MAX_REVIEW_RETRIES + 1):
-                        review = run_review(coder_name=name, written_files=task_files)
+                        # Bug #6: pass STAGING_ROOT so reviewer reads files from
+                        # staging (where Coder wrote them), not PROJECT_ROOT.
+                        from adelie.agents.coder_ai import STAGING_ROOT as _REVIEW_STAGING
+                        review = run_review(coder_name=name, written_files=task_files, workspace_root=_REVIEW_STAGING)
                         score = review.get("overall_score", 5)
                         self._review_score_history.append(score)
 
@@ -1005,6 +1015,44 @@ class Orchestrator:
                 self._emit_agent_end("Reviewer", f"error: {e}")
             else:
                 self._emit_agent_end("Reviewer", "approved" if reviewer_approved else "rejected")
+
+            # Bug #3: Log review failures to KB so Expert AI avoids re-issuing
+            # the exact same task that was rejected.
+            if not reviewer_approved and all_written_files:
+                failed_files = [f.get("filepath", "") for f in all_written_files]
+                review_summary = review.get("summary", "N/A") if review else "N/A"
+                review_issues = ""
+                if review:
+                    for issue in review.get("issues", [])[:5]:
+                        review_issues += f"- [{issue.get('severity')}] {issue.get('title')}: {issue.get('suggestion', '')}\n"
+                failure_note = (
+                    f"# Review Failure Log (Cycle #{self.loop_iteration})\n\n"
+                    f"The following files were rejected by Reviewer AI after "
+                    f"{MAX_REVIEW_RETRIES + 1} attempts:\n"
+                    + "\n".join(f"- `{f}`" for f in failed_files) + "\n\n"
+                    f"**Review Summary**: {review_summary}\n\n"
+                    f"**Issues**:\n{review_issues}\n"
+                    f"Expert AI should NOT re-assign the same task until "
+                    f"the underlying issue is resolved.\n"
+                )
+                failure_path = WORKSPACE_PATH / "errors" / f"review_failure_{self.loop_iteration}.md"
+                failure_path.parent.mkdir(parents=True, exist_ok=True)
+                failure_path.write_text(failure_note, encoding="utf-8")
+                retriever.update_index(
+                    f"errors/{failure_path.name}",
+                    tags=["error", "review-failure"],
+                    summary=f"Review rejected cycle #{self.loop_iteration}: {', '.join(failed_files[:3])}",
+                )
+                console.print(f"[yellow]📝 Review failure logged to KB for Expert AI awareness[/yellow]")
+
+            # Bug #4: Record coder/reviewer results for next cycle context
+            self._last_coder_result = {
+                "cycle": self.loop_iteration,
+                "files_written": len(all_written_files),
+                "reviewer_approved": reviewer_approved,
+                "review_score": review.get("overall_score", 0) if review else 0,
+                "review_summary": review.get("summary", "")[:300] if review else "",
+            }
         elif all_written_files and self.phase != "initial":
             # Reviewer not scheduled this cycle — auto-approve staged files
             reviewer_approved = True
