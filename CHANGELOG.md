@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
+## [0.3.1] - 2026-04-10
+
+### Fixed
+- **Framework Detection — Vite-Only Assumption** — `_get_scaffolding_need()` in Expert AI previously assumed all JS/TS projects use Vite, demanding `index.html`, `vite.config.ts`, and `src/main.tsx` even for Next.js, Nuxt, Remix, SvelteKit, and Angular projects. Added `_detect_framework()` which checks config files (`next.config.*`, `nuxt.config.*`, etc.) and `package.json` dependencies, then applies framework-appropriate entry file checks. Vite checks are now only applied when no specific framework is detected.
+- **Path Safety — `..` Substring False Positive** — `coder_ai.py` used `".." in filepath` (substring match) to block directory traversal, which incorrectly caught Next.js catch-all routes like `[...nextauth]` because `...` contains the substring `..`. Changed to `".." in Path(filepath).parts` (segment-level check) so only actual `..` path segments are blocked while bracket-based dynamic routes are allowed.
+- **Coder Context — Framework Config Files** — `_read_existing_files()` in Coder AI now auto-includes framework config files (`next.config.js`, `nuxt.config.ts`, `svelte.config.js`, `remix.config.js`, `angular.json`) alongside the existing Vite configs, giving coders proper context regardless of framework.
+
 ## [0.3.0] - 2026-04-09
 
 **Major Release — AI Harness Architecture**

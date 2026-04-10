@@ -199,6 +199,62 @@ Source files found:
 
 {advice}"""
 
+def _detect_framework(project_root) -> str:
+    """
+    Detect the JS/TS framework used in the project.
+    Returns one of: 'nextjs', 'nuxt', 'remix', 'sveltekit', 'angular', 'vite', 'unknown'.
+    """
+    # Next.js: next.config.js / next.config.mjs / next.config.ts
+    for ext in (".js", ".mjs", ".ts"):
+        if (project_root / f"next.config{ext}").exists():
+            return "nextjs"
+
+    # Nuxt: nuxt.config.ts / nuxt.config.js
+    for ext in (".ts", ".js"):
+        if (project_root / f"nuxt.config{ext}").exists():
+            return "nuxt"
+
+    # Remix: remix.config.js
+    if (project_root / "remix.config.js").exists():
+        return "remix"
+
+    # SvelteKit: svelte.config.js
+    if (project_root / "svelte.config.js").exists():
+        return "sveltekit"
+
+    # Angular: angular.json
+    if (project_root / "angular.json").exists():
+        return "angular"
+
+    # Check package.json dependencies as fallback
+    pkg_path = project_root / "package.json"
+    if pkg_path.exists():
+        try:
+            pkg = json.loads(pkg_path.read_text(encoding="utf-8"))
+            all_deps = set(pkg.get("dependencies", {}).keys())
+            all_deps |= set(pkg.get("devDependencies", {}).keys())
+
+            if "next" in all_deps:
+                return "nextjs"
+            if "nuxt" in all_deps:
+                return "nuxt"
+            if "@remix-run/react" in all_deps:
+                return "remix"
+            if "@sveltejs/kit" in all_deps:
+                return "sveltekit"
+            if "@angular/core" in all_deps:
+                return "angular"
+        except Exception:
+            pass
+
+    # Vite: vite.config.ts / vite.config.js
+    for ext in (".ts", ".js"):
+        if (project_root / f"vite.config{ext}").exists():
+            return "vite"
+
+    return "unknown"
+
+
 def _get_scaffolding_need() -> str:
     """
     프로젝트 진입 파일 존재 여부 검사.
@@ -225,12 +281,72 @@ def _get_scaffolding_need() -> str:
     # Define scaffolding checks per project type
     checks: list[dict] = []
 
-    # React/Vite project detection
     has_tsx = any(f.suffix in (".tsx", ".jsx") for f in project_root.rglob("*") if f.is_file())
     has_ts = any(f.suffix == ".ts" for f in project_root.rglob("*") if f.is_file())
     has_pkg = "package.json" in existing
 
-    if has_tsx or has_ts or has_pkg:
+    # ── Framework-aware scaffolding checks ────────────────────────────
+    framework = _detect_framework(project_root)
+
+    if framework == "nextjs":
+        # Next.js needs: package.json, next.config.*, src/app/layout.tsx or pages/
+        entry_files = {
+            "package.json": "Node.js dependencies and scripts (npm run dev, npm run build)",
+        }
+        # Check for app router or pages router
+        has_app_router = (
+            (src_dir / "app" / "layout.tsx").exists()
+            or (src_dir / "app" / "layout.ts").exists()
+            or (src_dir / "app" / "layout.jsx").exists()
+            or (project_root / "app" / "layout.tsx").exists()
+        )
+        has_pages_router = (
+            (src_dir / "pages").exists()
+            or (project_root / "pages").exists()
+        )
+        if not has_app_router and not has_pages_router:
+            entry_files["src/app/layout.tsx"] = "Next.js App Router root layout"
+            entry_files["src/app/page.tsx"] = "Next.js App Router home page"
+
+        for fname, desc in entry_files.items():
+            path = project_root / fname
+            if not path.exists():
+                checks.append({"file": fname, "desc": desc})
+
+    elif framework == "nuxt":
+        entry_files = {
+            "package.json": "Node.js dependencies and scripts",
+        }
+        has_app_vue = (project_root / "app.vue").exists()
+        has_pages = (project_root / "pages").exists()
+        if not has_app_vue and not has_pages:
+            entry_files["app.vue"] = "Nuxt root App component"
+
+        for fname, desc in entry_files.items():
+            path = project_root / fname
+            if not path.exists():
+                checks.append({"file": fname, "desc": desc})
+
+    elif framework == "sveltekit":
+        entry_files = {
+            "package.json": "Node.js dependencies and scripts",
+        }
+        has_routes = (src_dir / "routes").exists()
+        if not has_routes:
+            entry_files["src/routes/+page.svelte"] = "SvelteKit root page"
+
+        for fname, desc in entry_files.items():
+            path = project_root / fname
+            if not path.exists():
+                checks.append({"file": fname, "desc": desc})
+
+    elif framework in ("remix", "angular"):
+        # Minimal checks — just package.json
+        if not (project_root / "package.json").exists():
+            checks.append({"file": "package.json", "desc": "Node.js dependencies and scripts"})
+
+    elif has_tsx or has_ts or has_pkg:
+        # Default: Vite / vanilla React project (original behavior)
         entry_files = {
             "index.html": "Vite entry point — must reference src/main.tsx",
             "package.json": "Node.js dependencies and scripts (npm run build, npm run dev)",

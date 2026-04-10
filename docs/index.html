@@ -792,7 +792,7 @@
       <a href="#monitoring">Monitoring</a>
       <a href="#changelog">Changelog</a>
       <a href="https://github.com/Ade1ie/adelie" target="_blank">GitHub ↗</a>
-      <span class="nav-badge">v0.3.0</span>
+      <span class="nav-badge">v0.3.1</span>
     </div>
   </nav>
 
@@ -1635,6 +1635,23 @@
           <h2>Changelog</h2>
         </div>
         <p>All notable changes to Adelie, following <a href="https://keepachangelog.com/" target="_blank">Keep a Changelog</a> format.</p>
+
+        <div class="changelog-entry">
+          <div class="changelog-header" onclick="this.nextElementSibling.classList.toggle('open');this.querySelector('.changelog-expand').textContent=this.nextElementSibling.classList.contains('open')?'▾':'▸'">
+            <span class="changelog-version">0.3.1</span>
+            <span class="changelog-date">2026-04-10</span>
+            <span class="changelog-tag tag-fix">Fix</span>
+            <span class="changelog-expand">▾</span>
+          </div>
+          <div class="changelog-body open">
+            <h4>🐛 Fixed</h4>
+            <ul>
+              <li><strong>Framework Detection</strong> — Scaffolding check no longer assumes all JS/TS projects use Vite. Added <code>_detect_framework()</code> supporting Next.js, Nuxt, Remix, SvelteKit, and Angular with framework-appropriate entry file checks.</li>
+              <li><strong>Path Safety</strong> — Fixed <code>".." in filepath</code> substring match incorrectly blocking Next.js catch-all routes like <code>[...nextauth]</code>. Now uses <code>Path.parts</code> for segment-level traversal detection.</li>
+              <li><strong>Coder Context</strong> — Auto-included config files for coders now cover Next.js, Nuxt, SvelteKit, Remix, and Angular configs alongside Vite.</li>
+            </ul>
+          </div>
+        </div>
 
         <div class="changelog-entry">
           <div class="changelog-header" onclick="this.nextElementSibling.classList.toggle('open');this.querySelector('.changelog-expand').textContent=this.nextElementSibling.classList.contains('open')?'▾':'▸'">

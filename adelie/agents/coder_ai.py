@@ -81,7 +81,11 @@ def _read_existing_files(workspace_root: Path, filepaths: list[str]) -> str:
 
     # Auto-include key config files if not already in the list
     key_configs = [
-        "package.json", "tsconfig.json", "vite.config.ts", "vite.config.js",
+        "package.json", "tsconfig.json",
+        "vite.config.ts", "vite.config.js",
+        "next.config.js", "next.config.mjs", "next.config.ts",
+        "nuxt.config.ts", "nuxt.config.js",
+        "svelte.config.js", "remix.config.js", "angular.json",
         "index.html", "requirements.txt", "pyproject.toml",
     ]
     filepath_set = set(filepaths)
@@ -249,8 +253,11 @@ def run_coder(
             continue
 
         # Sanitize — prevent writing outside staging area
-        # Check both Unix absolute paths (/...) and Windows (C:\...)
-        if filepath.startswith("/") or ".." in filepath:
+        # Check absolute paths and genuine parent-directory traversal.
+        # Use Path.parts for segment-level check so bracket paths like
+        # [..nextauth] or [...slug] (Next.js catch-all routes) are allowed.
+        parts = Path(filepath).parts
+        if filepath.startswith("/") or ".." in parts:
             console.print(
                 f"[yellow]⚠️  Skipped unsafe path: {filepath}[/yellow]"
             )
