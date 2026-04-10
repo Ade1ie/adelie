@@ -23,6 +23,7 @@ from adelie.config import (
     GEMINI_API_KEY,
     GEMINI_MODEL,
     LLM_PROVIDER,
+    LLM_TIMEOUT,
     OLLAMA_API_KEY,
     OLLAMA_BASE_URL,
     OLLAMA_MODEL,
@@ -362,7 +363,7 @@ def _generate_ollama_model(
         headers["Authorization"] = f"Bearer {OLLAMA_API_KEY}"
 
     try:
-        resp = requests.post(url, json=payload, headers=headers, timeout=120)
+        resp = requests.post(url, json=payload, headers=headers, timeout=LLM_TIMEOUT)
         resp.raise_for_status()
     except requests.ConnectionError:
         raise ConnectionError(

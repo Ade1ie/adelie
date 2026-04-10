@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
+## [0.3.2] - 2026-04-10
+
+### Added
+- **Configurable LLM Timeout** — New `LLM_TIMEOUT` environment variable (default: `300` seconds, up from hardcoded `120`). Large models on Ollama Cloud (e.g., `gemma4:31b`) frequently timed out at 120s, especially in later loops with large KB contexts. Set in `.env`: `LLM_TIMEOUT=600` for even longer timeouts.
+
 ## [0.3.1] - 2026-04-10
 
 ### Fixed

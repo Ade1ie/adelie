@@ -25,6 +25,7 @@ GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
 OLLAMA_BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "llama3.2")
 OLLAMA_API_KEY: str = os.getenv("OLLAMA_API_KEY", "")  # For Ollama Cloud
+LLM_TIMEOUT: int = int(os.getenv("LLM_TIMEOUT", "300"))  # Request timeout in seconds
 
 # ── Model Fallback ───────────────────────────────────────────────────────────
 # Comma-separated fallback chain, e.g. "gemini:gemini-2.5-flash,gemini:gemini-2.0-flash,ollama:llama3.2"
