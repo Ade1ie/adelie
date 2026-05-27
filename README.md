@@ -13,7 +13,7 @@
   <a href="https://www.npmjs.com/package/adelie-ai"><img src="https://img.shields.io/npm/v/adelie-ai?style=flat-square&logo=npm&color=CB3837" alt="npm version" /></a>
   <img src="https://img.shields.io/badge/python-3.10+-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python" />
   <img src="https://img.shields.io/badge/LLM-Gemini%20│%20Ollama-FF6F00?style=flat-square" alt="LLM" />
-  <img src="https://img.shields.io/badge/tests-748%20passing-2EA043?style=flat-square" alt="Tests" />
+  <img src="https://img.shields.io/badge/tests-750%20passing-2EA043?style=flat-square" alt="Tests" />
   <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="License" /></a>
 </p>
 
@@ -35,7 +35,7 @@
 Adelie is an autonomous AI orchestrator that plans, codes, reviews, tests, deploys, and evolves software projects through a coordinated multi-agent loop. It ships as a single CLI (`npm install -g adelie-ai`) and requires only an LLM provider — no cloud backend, no account.
 
 ```
-    (o_    Adelie v0.3.0
+    (o_    Adelie v0.3.5
     //\    gemini · gemini-2.5-pro
     V_/_   Phase: mid_1 | 🛡️3 📡🟢 🧠12/5
 ```
