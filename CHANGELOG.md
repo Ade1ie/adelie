@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
+## [0.3.5] - 2026-05-27
+
+### Fixed
+- **Orchestrator Stability & Concurrency** — Fixed a state leak where `new_logic` cycles exceeding limits bypassed critical cycle-end logging and state-saving due to an early `return`. Deep copied `coder_tasks` using `copy.deepcopy` to prevent shared mutations and data races during multithreaded test feedback injection.
+- **Staging & Syntax Validation Recovery** — Created a syntax validation retry loop for the Coder agent when `_verify_staged_files` catches syntax errors, avoiding silent staging deletions. Also merged newly corrected files into the Tester target set instead of replacing the entire target list.
+- **Self-Healing Checkpoint Rollback** — Added active self-healing checkpoint recovery during recovery failures. The orchestrator now calls `CheckpointManager.restore()` to roll back project files to the latest safe checkpoint when error recoveries reach their limit.
+- **Zero-File Stalemate Tracker** — Modified `_zero_file_streak` to monitor successfully promoted files rather than staged folders, ensuring registry resets work even when files are repeatedly rejected by the Reviewer or blocked by PolicyGate.
+
 ## [0.3.4] - 2026-04-11
 
 ### Fixed

@@ -12,6 +12,7 @@ State machine:
 
 from __future__ import annotations
 
+import copy
 import json
 from typing import Callable, Optional
 import signal
@@ -666,6 +667,7 @@ class Orchestrator:
                 # Force state transition on critical loops
                 if self.state.value in ("new_logic", "error"):
                     console.print("[bold yellow]🔧 Forcing transition to NORMAL state[/bold yellow]")
+                    self._archive_errors()  # Clear outstanding errors to prevent stale context loop
                     self.state = LoopState.NORMAL
                     system_state["situation"] = "normal"
             else:
@@ -1150,10 +1152,56 @@ class Orchestrator:
             except Exception as e:
                 console.print(f"[dim]⚠️ PolicyGate error: {e}[/dim]")
 
-        # ── Promote staged files to project (after review + policy) ───────
+        # ── Syntax validation with Coder Retry Loop (before promotion) ───
+        syntax_passed = True
         if all_written_files and reviewer_approved and policy_passed:
+            passed_files, failed_files = self._verify_staged_files(all_written_files)
+            if failed_files:
+                syntax_passed = False
+                console.print(
+                    f"[yellow]⚠️  Syntax validation failed for {len(failed_files)} file(s) — "
+                    f"initiating retry[/yellow]"
+                )
+                if coder_tasks and self.phase != "initial":
+                    from adelie.agents.coder_manager import run_coders
+                    from adelie.phases import PHASE_INFO
+                    phase_info = PHASE_INFO.get(self.phase, {})
+                    max_layer = phase_info.get("max_coder_layer", 0)
+
+                    # Build compiler failure feedback
+                    error_feedback = "## ⚠️ SYNTAX/COMPILATION FAILURE — FIX THESE ERRORS\n"
+                    for f in failed_files:
+                        error_feedback += f"### File: `{f.get('filepath')}`\n"
+                        error_feedback += f"Error: {f.get('error', 'Syntax error')}\n\n"
+                    error_feedback += "Fix the code to resolve all syntax, compile, and parse errors."
+
+                    for task in coder_tasks:
+                        task["feedback"] = error_feedback
+
+                    try:
+                        fix_start_time = time.time()
+                        run_coders(coder_tasks, max_active_layer=max_layer)
+                        new_files = self._collect_staged_files(fix_start_time)
+                        if new_files:
+                            all_written_files = new_files
+                            # Re-verify after retry
+                            passed_files, failed_files = self._verify_staged_files(all_written_files)
+                            if not failed_files:
+                                syntax_passed = True
+                                console.print("[bold green]✅ Syntax validation passed after retry[/bold green]")
+                            else:
+                                console.print(
+                                    f"[red]❌ Syntax validation still failed for {len(failed_files)} file(s) "
+                                    f"after retry[/red]"
+                                )
+                    except Exception as se:
+                        console.print(f"[dim]⚠️ Syntax retry exception: {se}[/dim]")
+
+        # ── Promote staged files to project (after review + policy + syntax check) ───────
+        promoted_count = 0
+        if all_written_files and reviewer_approved and policy_passed and syntax_passed:
             with self._staging_lock:
-                self._promote_staged_files(all_written_files)
+                promoted_count = self._promote_staged_files(all_written_files)
                 self._cleanup_staging()
 
             # ── Git auto-commit (MID_1+) ──────────────────────────────────────
@@ -1169,12 +1217,14 @@ class Orchestrator:
                     console.print(f"[dim]⚠️ Git commit error: {e}[/dim]")
 
         # ── Bug #10: Zero-file streak detection & emergency registry reset ────
-        if not all_written_files and coder_tasks:
+        # Zero-file streak triggers when coder tasks exist but promoted_count is 0
+        # (covers coder writing 0 files OR files being written but blocked/rejected before promotion)
+        if promoted_count == 0 and coder_tasks:
             self._zero_file_streak += 1
             if self._zero_file_streak >= 3:
                 console.print(
                     f"[bold yellow]🔓 Emergency: {self._zero_file_streak} consecutive"
-                    f" zero-file cycles — resetting coder registry[/bold yellow]"
+                    f" zero-promoted cycles — resetting coder registry[/bold yellow]"
                 )
                 try:
                     from adelie.agents.coder_manager import REGISTRY_PATH
@@ -1222,13 +1272,14 @@ class Orchestrator:
                 parallel_names.append("Runner")
             console.print(f"[dim]  ⚡ Phase 3: parallel execution [{', '.join(parallel_names)}][/dim]")
 
+            import copy
             with ThreadPoolExecutor(max_workers=len(parallel_names), thread_name_prefix="adelie-p3") as pool:
                 futures = {}
 
                 if run_tester:
                     _test_pass_results = []
                     _test_metrics = {}
-                    _p3_coder_tasks = list(coder_tasks)  # Copy for thread safety
+                    _p3_coder_tasks = copy.deepcopy(coder_tasks)  # Thread-safe deep copy to prevent shared mutations
                     _p3_all_files = list(all_written_files)
 
                     def _run_tester():
@@ -1272,7 +1323,11 @@ class Orchestrator:
                                 if coder_result.get("total_files", 0) > 0:
                                     new_files = self._collect_staged_files(fix_start_time)
                                     if new_files:
-                                        _files = new_files
+                                        # Merge new_files into _files by filepath to keep all original targets in validation
+                                        existing_paths = {f["filepath"] for f in _files}
+                                        for nf in new_files:
+                                            if nf["filepath"] not in existing_paths:
+                                                _files.append(nf)
                                     with self._staging_lock:
                                         self._promote_staged_files(_files)
                                         self._cleanup_staging()
@@ -1558,6 +1613,19 @@ class Orchestrator:
             if self._recover_count >= self.MAX_RECOVER_RETRIES:
                 console.print(f"[yellow]⚠️  Max recovery retries ({self.MAX_RECOVER_RETRIES}) reached — entering maintenance.[/yellow]")
                 self._archive_errors()
+                
+                # Checkpoint Rollback: Revert to the latest safe state
+                try:
+                    from adelie.checkpoint import CheckpointManager
+                    cp_mgr = CheckpointManager()
+                    cps = cp_mgr.list_checkpoints()
+                    if cps:
+                        latest_id = cps[0].checkpoint_id
+                        console.print(f"[bold yellow]🔄 Self-Healing: Rolling back project files to checkpoint {latest_id}...[/bold yellow]")
+                        cp_mgr.restore(latest_id)
+                except Exception as cpe:
+                    console.print(f"[dim]⚠️ Rollback failed during recovery limit: {cpe}[/dim]")
+                
                 self.state = LoopState.MAINTENANCE
             else:
                 console.print(f"[yellow]🔄 Recovery attempt {self._recover_count}/{self.MAX_RECOVER_RETRIES} — clearing errors and returning to normal.[/yellow]")
@@ -1580,9 +1648,8 @@ class Orchestrator:
                         f"[yellow]⚠️  Max new_logic cycles ({self.MAX_NEW_LOGIC_CYCLES}) reached — "
                         f"transitioning to normal.[/yellow]"
                     )
-                    self.state = LoopState.NORMAL
+                    next_situation = "normal"
                     self._new_logic_count = 0
-                    return
             else:
                 self._new_logic_count = 0
 

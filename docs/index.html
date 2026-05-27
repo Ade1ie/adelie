@@ -1638,6 +1638,42 @@
 
         <div class="changelog-entry">
           <div class="changelog-header" onclick="this.nextElementSibling.classList.toggle('open');this.querySelector('.changelog-expand').textContent=this.nextElementSibling.classList.contains('open')?'▾':'▸'">
+            <span class="changelog-version">0.3.5</span>
+            <span class="changelog-date">2026-05-27</span>
+            <span class="changelog-tag tag-fix">Fix</span>
+            <span class="changelog-expand">▾</span>
+          </div>
+          <div class="changelog-body open">
+            <h4>🐛 Fixed</h4>
+            <ul>
+              <li><strong>Orchestrator Stability</strong> — Fixed new_logic state transition leak by removing premature loop returns.</li>
+              <li><strong>Tester Flow</strong> — Prevented test suite file leakage by merging newly compiled files rather than replacing.</li>
+              <li><strong>Concurrency</strong> — Thread-safe deep copies for coder tasks during parallel execution.</li>
+              <li><strong>Self-Healing</strong> — Active rollback to the latest safe checkpoint when error recoveries are exhausted.</li>
+              <li><strong>Stalemate Detection</strong> — Adjusted streak tracking to monitor actual promoted files.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="changelog-entry">
+          <div class="changelog-header" onclick="this.nextElementSibling.classList.toggle('open');this.querySelector('.changelog-expand').textContent=this.nextElementSibling.classList.contains('open')?'▾':'▸'">
+            <span class="changelog-version">0.3.4</span>
+            <span class="changelog-date">2026-04-11</span>
+            <span class="changelog-tag tag-fix">Fix</span>
+            <span class="changelog-expand">▸</span>
+          </div>
+          <div class="changelog-body">
+            <h4>🐛 Fixed</h4>
+            <ul>
+              <li><strong>Per-File Limit Trap</strong> — Shifted to fullpath matching and raised MAX_CODERS_PER_FILE, preventing deadlocks.</li>
+              <li><strong>Dep Sync Validation</strong> — Lowercase syntax check and blocklist for hallucinated dependency packages.</li>
+              <li><strong>Zero-File Loop</strong> — Emergency coder registry reset for stalled coder modules.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="changelog-entry">
+          <div class="changelog-header" onclick="this.nextElementSibling.classList.toggle('open');this.querySelector('.changelog-expand').textContent=this.nextElementSibling.classList.contains('open')?'▾':'▸'">
             <span class="changelog-version">0.3.3</span>
             <span class="changelog-date">2026-04-10</span>
             <span class="changelog-tag tag-fix">Fix</span>
