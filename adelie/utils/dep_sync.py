@@ -174,7 +174,25 @@ def sync_package_json(missing: list[str], project_root: Path) -> int:
     dev_deps = pkg.get("devDependencies", {})
     added = 0
 
+    # Known-invalid package name patterns — common LLM hallucinations
+    _INVALID_PKG_NAMES = {
+        "requested", "response", "result", "data", "config",
+        "utils", "helpers", "types", "models", "services",
+        "app", "main", "index", "test", "error", "handler",
+        "component", "module", "function", "class", "object",
+        "input", "output", "value", "item", "list", "array",
+        "string", "number", "boolean", "null", "undefined",
+        "client", "server", "api", "route", "page", "layout",
+    }
+
     for name in missing:
+        # Skip hallucinated/generic package names
+        name_lower = name.lower()
+        if name_lower in _INVALID_PKG_NAMES:
+            continue
+        # npm packages must be lowercase, start with letter/@, no spaces
+        if not re.match(r'^(@[a-z0-9-~][a-z0-9-._~]*/)?[a-z0-9][a-z0-9._-]*$', name):
+            continue
         if name not in deps and name not in dev_deps:
             # Heuristic: testing/dev tools go to devDependencies
             if any(kw in name.lower() for kw in ["test", "jest", "vitest", "eslint", "prettier", "lint"]):

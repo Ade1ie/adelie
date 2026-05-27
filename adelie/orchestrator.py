@@ -115,6 +115,9 @@ class Orchestrator:
         # Track coder/reviewer results for next cycle's Expert AI context (Bug #4)
         self._last_coder_result: dict | None = None
 
+        # Track consecutive zero-file coder cycles for emergency reset (Bug #10)
+        self._zero_file_streak: int = 0
+
         # Auto-scan: if KB is empty and project has existing code, scan first
         self._auto_scan_done = False
 
@@ -1164,6 +1167,34 @@ class Orchestrator:
                         )
                 except Exception as e:
                     console.print(f"[dim]⚠️ Git commit error: {e}[/dim]")
+
+        # ── Bug #10: Zero-file streak detection & emergency registry reset ────
+        if not all_written_files and coder_tasks:
+            self._zero_file_streak += 1
+            if self._zero_file_streak >= 3:
+                console.print(
+                    f"[bold yellow]🔓 Emergency: {self._zero_file_streak} consecutive"
+                    f" zero-file cycles — resetting coder registry[/bold yellow]"
+                )
+                try:
+                    from adelie.agents.coder_manager import REGISTRY_PATH
+                    if REGISTRY_PATH.exists():
+                        import json as _json
+                        reg = _json.loads(REGISTRY_PATH.read_text(encoding="utf-8"))
+                        old_count = len(reg.get("coders", []))
+                        reg["coders"] = []
+                        REGISTRY_PATH.write_text(
+                            _json.dumps(reg, indent=2, ensure_ascii=False),
+                            encoding="utf-8",
+                        )
+                        console.print(
+                            f"  [yellow]Cleared {old_count} coder(s) from registry[/yellow]"
+                        )
+                except Exception as e:
+                    console.print(f"  [dim]⚠️ Registry reset error: {e}[/dim]")
+                self._zero_file_streak = 0
+        else:
+            self._zero_file_streak = 0
 
         # ══════════════════════════════════════════════════════════════════════
         # PHASE 3: Tester AI + Runner AI (PARALLEL)

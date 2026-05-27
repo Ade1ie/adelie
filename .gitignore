@@ -55,3 +55,11 @@ adelie_test/
 gemini-cli-main/
 
 references/
+
+# oculpm:begin v1
+.oculpm/index/
+.oculpm/.lock
+.oculpm/.schema-version
+.oculpm/oculpm.log
+.oculpm.backup-*/
+# oculpm:end

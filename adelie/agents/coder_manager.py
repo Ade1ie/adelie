@@ -36,7 +36,13 @@ _STOP_WORDS = {
 }
 
 _DEDUP_THRESHOLD = 0.6  # Jaccard similarity >= 60% → duplicate
-MAX_CODERS_PER_FILE = 3
+MAX_CODERS_PER_FILE = 5
+
+# Keywords that indicate a "fix/patch" task (bypass per-file limit)
+_FIX_KEYWORDS = {
+    "fix", "patch", "hotfix", "repair", "resolve", "debug",
+    "error", "bug", "broken", "typo", "incorrect", "wrong",
+}
 
 
 def _tokenize(text: str) -> set[str]:
@@ -89,17 +95,20 @@ def _find_duplicate_coder(
 def _count_file_modifications(registry: dict, files: list[str]) -> int:
     """
     주어진 파일 목록과 겹치는 기존 코더 수를 반환.
-    coder task description 내 파일 경로 매칭 기반.
+    coder task description 내 **전체 파일 경로** 매칭 기반.
+    (basename 매칭은 다른 경로의 동일 이름 파일을 오탐하므로 fullpath 사용)
     """
     if not files:
         return 0
 
-    file_basenames = {f.rsplit("/", 1)[-1].lower() for f in files}
+    # Use full path for matching to avoid collisions
+    # e.g. "quests/create/page.tsx" and "login/page.tsx" are different files
+    file_fullpaths = {f.lower() for f in files}
     count = 0
 
     for coder in registry.get("coders", []):
         task_lower = coder.get("last_task", "").lower()
-        if any(basename in task_lower for basename in file_basenames):
+        if any(fp in task_lower for fp in file_fullpaths):
             count += 1
 
     return count
@@ -270,7 +279,10 @@ def run_coders(
                 name = existing_name
 
             # ── Per-file limit ─────────────────────────────────────
-            if relevant and _count_file_modifications(registry, relevant) >= MAX_CODERS_PER_FILE:
+            # Fix/patch tasks bypass per-file limit — they MUST be able
+            # to modify files that need correction (Bug #8b)
+            is_fix_task = bool(_FIX_KEYWORDS & _tokenize(task_desc))
+            if relevant and not is_fix_task and _count_file_modifications(registry, relevant) >= MAX_CODERS_PER_FILE:
                 console.print(
                     f"  [yellow]⏭ Skipped '{name}': target files modified "
                     f"{MAX_CODERS_PER_FILE}+ times already[/yellow]"

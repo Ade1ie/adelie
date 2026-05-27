@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
+## [0.3.4] - 2026-04-11
+
+### Fixed
+- **Per-File Limit Trap (Bug #8)** — `_count_file_modifications()` used basename matching, causing `page.tsx` in `quests/create/` to collide with `page.tsx` in `login/`. Changed to fullpath matching. Also raised `MAX_CODERS_PER_FILE` from 3→5, and exempted "fix/patch" tasks from the limit entirely. This resolves the 20-cycle deadlock observed in cycles #51-70.
+- **Dep Sync Hallucination (Bug #9)** — `sync_package_json()` added LLM-hallucinated package names (e.g., `"Requested"`) directly to `package.json`, causing `npm install` failures. Added validation: known-invalid generic names are blocklisted, and npm naming convention (lowercase, no special chars) is enforced.
+- **Zero-File Coder Loop (Bug #10)** — When coders produce 0 files for 3+ consecutive cycles (due to per-file limit or dedup), the coder registry is now emergency-reset so tasks can be dispatched again. Prevents indefinite stagnation loops.
+
 ## [0.3.3] - 2026-04-10
 
 ### Fixed

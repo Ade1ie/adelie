@@ -69,12 +69,25 @@ class TestFindDuplicate:
 
 class TestFileModificationCount:
     def test_counts_matching_files(self):
+        """Full path in task description matches the file list."""
         registry = {"coders": [
-            {"name": "a", "last_task": "Update Chessboard.tsx"},
-            {"name": "b", "last_task": "Refactor Chessboard.tsx layout"},
+            {"name": "a", "last_task": "Update src/Chessboard.tsx"},
+            {"name": "b", "last_task": "Refactor src/Chessboard.tsx layout"},
             {"name": "c", "last_task": "Deploy server"},
         ]}
         assert _count_file_modifications(registry, ["src/Chessboard.tsx"]) == 2
+
+    def test_no_basename_collision(self):
+        """Different directories with same basename should NOT collide (Bug #8a)."""
+        registry = {"coders": [
+            {"name": "a", "last_task": "Create src/app/login/page.tsx"},
+            {"name": "b", "last_task": "Create src/app/quests/create/page.tsx"},
+            {"name": "c", "last_task": "Create src/app/dashboard/page.tsx"},
+        ]}
+        # Searching for quests/create/page.tsx should only match coder "b"
+        assert _count_file_modifications(
+            registry, ["src/app/quests/create/page.tsx"]
+        ) == 1
 
     def test_no_matches(self):
         registry = {"coders": [
@@ -89,3 +102,4 @@ class TestFileModificationCount:
     def test_empty_registry(self):
         registry = {"coders": []}
         assert _count_file_modifications(registry, ["src/App.tsx"]) == 0
+
