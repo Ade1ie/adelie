@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.3.7] - 2026-05-28
+
+### Fixed
+- **Monorepo Scaffolding Check Loop (Bug Fix)** — Improved `_get_scaffolding_need()` in Expert AI to automatically detect workspace directories (such as nested `client/` and `server/` structures). Scaffolding validation is now applied relative to these nested workspaces rather than strictly at the project root, resolving the cycle stagnation deadlock where the agent would continuously rewrite scaffolding.
+
 ## [0.3.6] - 2026-05-28
 
 ### Added

@@ -267,178 +267,229 @@ def _get_scaffolding_need() -> str:
     if not project_root.exists():
         return ""
 
-    # Gather existing files for detection
-    existing = set()
-    for f in project_root.iterdir():
-        if f.is_file():
-            existing.add(f.name.lower())
-    src_dir = project_root / "src"
-    if src_dir.exists():
-        for f in src_dir.iterdir():
-            if f.is_file():
-                existing.add(f"src/{f.name}".lower())
-
-    # Define scaffolding checks per project type
     checks: list[dict] = []
 
-    has_tsx = any(f.suffix in (".tsx", ".jsx") for f in project_root.rglob("*") if f.is_file())
-    has_ts = any(f.suffix == ".ts" for f in project_root.rglob("*") if f.is_file())
-    has_pkg = "package.json" in existing
-
-    # ── Framework-aware scaffolding checks ────────────────────────────
-    framework = _detect_framework(project_root)
-
-    if framework == "nextjs":
-        # Next.js needs: package.json, next.config.*, src/app/layout.tsx or pages/
-        entry_files = {
-            "package.json": "Node.js dependencies and scripts (npm run dev, npm run build)",
-        }
-        # Check for app router or pages router
-        has_app_router = (
-            (src_dir / "app" / "layout.tsx").exists()
-            or (src_dir / "app" / "layout.ts").exists()
-            or (src_dir / "app" / "layout.jsx").exists()
-            or (project_root / "app" / "layout.tsx").exists()
-        )
-        has_pages_router = (
-            (src_dir / "pages").exists()
-            or (project_root / "pages").exists()
-        )
-        if not has_app_router and not has_pages_router:
-            entry_files["src/app/layout.tsx"] = "Next.js App Router root layout"
-            entry_files["src/app/page.tsx"] = "Next.js App Router home page"
-
-        for fname, desc in entry_files.items():
-            path = project_root / fname
-            if not path.exists():
-                checks.append({"file": fname, "desc": desc})
-
-    elif framework == "nuxt":
-        entry_files = {
-            "package.json": "Node.js dependencies and scripts",
-        }
-        has_app_vue = (project_root / "app.vue").exists()
-        has_pages = (project_root / "pages").exists()
-        if not has_app_vue and not has_pages:
-            entry_files["app.vue"] = "Nuxt root App component"
-
-        for fname, desc in entry_files.items():
-            path = project_root / fname
-            if not path.exists():
-                checks.append({"file": fname, "desc": desc})
-
-    elif framework == "sveltekit":
-        entry_files = {
-            "package.json": "Node.js dependencies and scripts",
-        }
-        has_routes = (src_dir / "routes").exists()
-        if not has_routes:
-            entry_files["src/routes/+page.svelte"] = "SvelteKit root page"
-
-        for fname, desc in entry_files.items():
-            path = project_root / fname
-            if not path.exists():
-                checks.append({"file": fname, "desc": desc})
-
-    elif framework in ("remix", "angular"):
-        # Minimal checks — just package.json
-        if not (project_root / "package.json").exists():
-            checks.append({"file": "package.json", "desc": "Node.js dependencies and scripts"})
-
-    elif has_tsx or has_ts or has_pkg:
-        # Default: Vite / vanilla React project (original behavior)
-        entry_files = {
-            "index.html": "Vite entry point — must reference src/main.tsx",
-            "package.json": "Node.js dependencies and scripts (npm run build, npm run dev)",
-            "tsconfig.json": "TypeScript compiler configuration",
-        }
-        # Check src/main.tsx or src/main.ts
-        has_main = (
-            (src_dir / "main.tsx").exists()
-            or (src_dir / "main.ts").exists()
-            or (src_dir / "main.jsx").exists()
-            or (src_dir / "main.js").exists()
-            or (src_dir / "index.tsx").exists()
-            or (src_dir / "index.ts").exists()
-        )
-        if not has_main:
-            entry_files["src/main.tsx"] = "React root render — ReactDOM.createRoot + App import"
-
-        has_vite_cfg = (
-            (project_root / "vite.config.ts").exists()
-            or (project_root / "vite.config.js").exists()
-        )
-        if not has_vite_cfg:
-            entry_files["vite.config.ts"] = "Vite build configuration with React plugin"
-
-        for fname, desc in entry_files.items():
-            path = project_root / fname
-            if not path.exists():
-                checks.append({"file": fname, "desc": desc})
-
-    # Python project detection
-    has_py = any(f.suffix == ".py" for f in project_root.rglob("*") if f.is_file())
-    if has_py and not (has_tsx or has_ts or has_pkg):
-        py_entries = {
-            "requirements.txt": "Python dependencies",
-        }
-        for fname, desc in py_entries.items():
-            if not (project_root / fname).exists():
-                checks.append({"file": fname, "desc": desc})
-
-    # ── tsconfig.json deep validation ─────────────────────────────────
-    tsconfig_path = project_root / "tsconfig.json"
-    if tsconfig_path.exists():
+    # Detect workspaces
+    workspaces = []
+    pkg_path = project_root / "package.json"
+    if pkg_path.exists():
         try:
-            # Strip comments (tsconfig allows // comments)
-            raw = tsconfig_path.read_text(encoding="utf-8")
-            # Remove single-line comments
-            import re as _re
-            cleaned = _re.sub(r'//.*$', '', raw, flags=_re.MULTILINE)
-            tsconfig = json.loads(cleaned)
+            pkg = json.loads(pkg_path.read_text(encoding="utf-8"))
+            workspaces = pkg.get("workspaces", [])
+            if isinstance(workspaces, dict):
+                workspaces = workspaces.get("packages", [])
+        except Exception:
+            pass
 
-            # Check "references" — e.g. [{"path": "./tsconfig.node.json"}]
-            for ref in tsconfig.get("references", []):
-                ref_path = ref.get("path", "")
-                if ref_path:
-                    ref_file = project_root / ref_path
-                    # If path is a directory, tsconfig.json is implied
-                    if not ref_file.exists() and not ref_file.with_suffix(".json").exists():
+    # If no explicit workspaces, check common folders
+    if not workspaces:
+        for folder in ["client", "server", "frontend", "backend"]:
+            if (project_root / folder).exists() and (project_root / folder).is_dir():
+                workspaces.append(folder)
+
+    # We will perform check on each workspace root, or on the project_root if no workspaces
+    targets = []
+    if workspaces:
+        for ws in workspaces:
+            # simple wildcards resolution
+            if "*" in ws or "?" in ws:
+                import glob
+                matched = glob.glob(str(project_root / ws))
+                for m in matched:
+                    targets.append(Path(m))
+            else:
+                ws_path = project_root / ws
+                if ws_path.exists() and ws_path.is_dir():
+                    targets.append(ws_path)
+    
+    if not targets:
+        targets = [project_root]
+
+    for target in targets:
+        # Resolve path relative to project_root to report
+        rel_prefix = ""
+        if target != project_root:
+            rel_prefix = f"{target.relative_to(project_root).as_posix()}/"
+
+        existing = set()
+        for f in target.iterdir():
+            if f.is_file():
+                existing.add(f.name.lower())
+        src_dir = target / "src"
+        if src_dir.exists() and src_dir.is_dir():
+            for f in src_dir.iterdir():
+                if f.is_file():
+                    existing.add(f"src/{f.name}".lower())
+
+        # Check project type for this target
+        has_tsx = any(f.suffix in (".tsx", ".jsx") for f in target.rglob("*") if f.is_file())
+        has_ts = any(f.suffix == ".ts" for f in target.rglob("*") if f.is_file())
+        has_pkg = "package.json" in existing
+
+        framework = _detect_framework(target)
+
+        # If it is a server-only workspace in a monorepo, only check package.json and tsconfig.json
+        is_server_ws = target != project_root and any(x in target.name.lower() for x in ["server", "backend", "api"])
+
+        if is_server_ws:
+            server_files = {
+                "package.json": "Node.js dependencies and scripts",
+            }
+            if has_ts:
+                server_files["tsconfig.json"] = "TypeScript compiler configuration"
+                # Check for src/index.ts or src/main.ts
+                has_server_main = (
+                    (src_dir / "index.ts").exists()
+                    or (src_dir / "main.ts").exists()
+                    or (src_dir / "server.ts").exists()
+                )
+                if not has_server_main:
+                    server_files["src/index.ts"] = "Server entry point"
+
+            for fname, desc in server_files.items():
+                path = target / fname
+                if not path.exists():
+                    checks.append({"file": f"{rel_prefix}{fname}", "desc": desc})
+
+        elif framework == "nextjs":
+            entry_files = {
+                "package.json": "Node.js dependencies and scripts (npm run dev, npm run build)",
+            }
+            has_app_router = (
+                (src_dir / "app" / "layout.tsx").exists()
+                or (src_dir / "app" / "layout.ts").exists()
+                or (src_dir / "app" / "layout.jsx").exists()
+                or (target / "app" / "layout.tsx").exists()
+            )
+            has_pages_router = (
+                (src_dir / "pages").exists()
+                or (target / "pages").exists()
+            )
+            if not has_app_router and not has_pages_router:
+                entry_files["src/app/layout.tsx"] = "Next.js App Router root layout"
+                entry_files["src/app/page.tsx"] = "Next.js App Router home page"
+
+            for fname, desc in entry_files.items():
+                path = target / fname
+                if not path.exists():
+                    checks.append({"file": f"{rel_prefix}{fname}", "desc": desc})
+
+        elif framework == "nuxt":
+            entry_files = {
+                "package.json": "Node.js dependencies and scripts",
+            }
+            has_app_vue = (target / "app.vue").exists()
+            has_pages = (target / "pages").exists()
+            if not has_app_vue and not has_pages:
+                entry_files["app.vue"] = "Nuxt root App component"
+
+            for fname, desc in entry_files.items():
+                path = target / fname
+                if not path.exists():
+                    checks.append({"file": f"{rel_prefix}{fname}", "desc": desc})
+
+        elif framework == "sveltekit":
+            entry_files = {
+                "package.json": "Node.js dependencies and scripts",
+            }
+            has_routes = (src_dir / "routes").exists()
+            if not has_routes:
+                entry_files["src/routes/+page.svelte"] = "SvelteKit root page"
+
+            for fname, desc in entry_files.items():
+                path = target / fname
+                if not path.exists():
+                    checks.append({"file": f"{rel_prefix}{fname}", "desc": desc})
+
+        elif framework in ("remix", "angular"):
+            if not (target / "package.json").exists():
+                checks.append({"file": f"{rel_prefix}package.json", "desc": "Node.js dependencies and scripts"})
+
+        elif has_tsx or has_ts or has_pkg:
+            entry_files = {
+                "index.html": "Vite entry point — must reference src/main.tsx",
+                "package.json": "Node.js dependencies and scripts (npm run build, npm run dev)",
+                "tsconfig.json": "TypeScript compiler configuration",
+            }
+            has_main = (
+                (src_dir / "main.tsx").exists()
+                or (src_dir / "main.ts").exists()
+                or (src_dir / "main.jsx").exists()
+                or (src_dir / "main.js").exists()
+                or (src_dir / "index.tsx").exists()
+                or (src_dir / "index.ts").exists()
+            )
+            if not has_main:
+                entry_files["src/main.tsx"] = "React root render — ReactDOM.createRoot + App import"
+
+            has_vite_cfg = (
+                (target / "vite.config.ts").exists()
+                or (target / "vite.config.js").exists()
+            )
+            if not has_vite_cfg:
+                entry_files["vite.config.ts"] = "Vite build configuration with React plugin"
+
+            for fname, desc in entry_files.items():
+                path = target / fname
+                if not path.exists():
+                    checks.append({"file": f"{rel_prefix}{fname}", "desc": desc})
+
+        # Python project detection
+        has_py = any(f.suffix == ".py" for f in target.rglob("*") if f.is_file())
+        if has_py and not (has_tsx or has_ts or has_pkg):
+            py_entries = {
+                "requirements.txt": "Python dependencies",
+            }
+            for fname, desc in py_entries.items():
+                if not (target / fname).exists():
+                    checks.append({"file": f"{rel_prefix}{fname}", "desc": desc})
+
+        # tsconfig.json deep validation
+        tsconfig_path = target / "tsconfig.json"
+        if tsconfig_path.exists():
+            try:
+                raw = tsconfig_path.read_text(encoding="utf-8")
+                import re as _re
+                cleaned = _re.sub(r'//.*$', '', raw, flags=_re.MULTILINE)
+                tsconfig = json.loads(cleaned)
+
+                for ref in tsconfig.get("references", []):
+                    ref_path = ref.get("path", "")
+                    if ref_path:
+                        ref_file = target / ref_path
+                        if not ref_file.exists() and not ref_file.with_suffix(".json").exists():
+                            checks.append({
+                                "file": f"{rel_prefix}{ref_path}",
+                                "desc": f"Referenced by tsconfig.json — must exist or build fails (TS6053)",
+                            })
+
+                extends = tsconfig.get("extends", "")
+                if extends and not extends.startswith("@"):
+                    ext_file = target / extends
+                    if not ext_file.exists():
                         checks.append({
-                            "file": ref_path,
-                            "desc": f"Referenced by tsconfig.json — must exist or build fails (TS6053)",
+                            "file": f"{rel_prefix}{extends}",
+                            "desc": f"Extended by tsconfig.json — must exist or build fails",
                         })
 
-            # Check "extends" — e.g. "./tsconfig.node.json"
-            extends = tsconfig.get("extends", "")
-            if extends and not extends.startswith("@"):
-                ext_file = project_root / extends
-                if not ext_file.exists():
-                    checks.append({
-                        "file": extends,
-                        "desc": f"Extended by tsconfig.json — must exist or build fails",
-                    })
+                types_list = tsconfig.get("compilerOptions", {}).get("types", [])
+                if types_list and has_pkg:
+                    try:
+                        pkg = json.loads((target / "package.json").read_text(encoding="utf-8"))
+                        all_deps = set(pkg.get("dependencies", {}).keys())
+                        all_deps |= set(pkg.get("devDependencies", {}).keys())
 
-            # Check "compilerOptions.types" → need @types/* in package.json
-            types_list = tsconfig.get("compilerOptions", {}).get("types", [])
-            if types_list and has_pkg:
-                try:
-                    pkg = json.loads((project_root / "package.json").read_text(encoding="utf-8"))
-                    all_deps = set(pkg.get("dependencies", {}).keys())
-                    all_deps |= set(pkg.get("devDependencies", {}).keys())
-
-                    for type_name in types_list:
-                        types_pkg = f"@types/{type_name}"
-                        if types_pkg not in all_deps:
-                            checks.append({
-                                "file": f"package.json (add {types_pkg})",
-                                "desc": f"tsconfig requires types '{type_name}' but {types_pkg} not in dependencies (TS2688)",
-                            })
-                except Exception:
-                    pass
-
-        except Exception:
-            pass  # tsconfig parse error — skip validation
+                        for type_name in types_list:
+                            types_pkg = f"@types/{type_name}"
+                            if types_pkg not in all_deps:
+                                checks.append({
+                                    "file": f"{rel_prefix}package.json (add {types_pkg})",
+                                    "desc": f"tsconfig requires types '{type_name}' but {types_pkg} not in dependencies (TS2688)",
+                                })
+                    except Exception:
+                        pass
+            except Exception:
+                pass
 
     if not checks:
         return ""
