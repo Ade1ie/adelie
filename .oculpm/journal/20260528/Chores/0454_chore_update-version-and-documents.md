@@ -1,26 +1,30 @@
 ---
 schema_version: 1
 type: chore
-slug: update-version-and-documents
+slug: "update-version-and-documents"
 status: done
 difficulty: low
 created_at: "2026-05-28T04:54:00+09:00"
 updated_at: "2026-05-28T04:54:00+09:00"
 session_id: "manual-20260528-045400"
 agent:
-  id: antigravity
+  id: "antigravity"
   version: "1.0"
-language: ko
-verified_by_user: false
+language: "ko"
+verified_by_user: true
 files_touched:
-  - path: docs/index.html
+  - path: "docs/index.html"
     op: update
-  - path: README.md
+  - path: "README.md"
     op: update
-  - path: docs/adelie.rb
+  - path: "docs/adelie.rb"
     op: update
 related: []
-tags: ["release", "chore", "documentation", "homebrew"]
+tags:
+  - "release"
+  - "chore"
+  - "documentation"
+  - "homebrew"
 ---
 [x] 0.3.5 릴리즈 버전 명시 및 문서/Homebrew 포뮬러 최신화
 
