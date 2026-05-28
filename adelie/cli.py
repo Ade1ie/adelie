@@ -87,6 +87,8 @@ def main() -> None:
     )
     parser.add_argument("-v", "--version", action="version",
                         version=f"adelie {__version__}")
+    parser.add_argument("--update", action="store_true",
+                        help="Check npm registry and update Adelie to the latest version")
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
     # ── help ──────────────────────────────────────────────────────────────────
@@ -279,6 +281,17 @@ def main() -> None:
     # ── Splash screen (no command) ────────────────────────────────────────────
     args = parser.parse_args()
 
+    if getattr(args, "update", False):
+        from adelie.updater import check_for_update, do_update
+        console.print("[cyan]🔍 Checking for updates...[/cyan]")
+        up = check_for_update(__version__, timeout=4.0)
+        if up:
+            console.print(f"[bold yellow]🐧 A new version has been found! (v{up['current']} → v{up['latest']})[/bold yellow]")
+            sys.exit(do_update())
+        else:
+            console.print(f"[green]✅ You are already running the latest version! (v{__version__})[/green]")
+            sys.exit(0)
+
     if not args.command:
         art = Text(_PENGUIN, no_wrap=True)
         info = (
@@ -289,6 +302,16 @@ def main() -> None:
             f"  [dim]adelie <command> --help[/dim]\n"
         )
         console.print(Columns([Padding(art, (0, 1)), info]))
+        
+        # Check for updates with a fast 1.0s timeout to avoid blocking startup
+        try:
+            from adelie.updater import check_for_update, format_update_notice
+            up = check_for_update(__version__, timeout=1.0)
+            if up:
+                console.print(format_update_notice(up["current"], up["latest"]))
+        except Exception:
+            pass
+
         parser.print_help()
         return
 

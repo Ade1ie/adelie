@@ -229,6 +229,17 @@ class AdelieApp:
             workspace=str(cfg.PROJECT_ROOT),
         )
 
+        # Start async update check in the background
+        try:
+            from adelie import __version__
+            from adelie.updater import check_for_update_async, format_update_notice
+            def _update_callback(result):
+                if result:
+                    self._real_console.print(format_update_notice(result["current"], result["latest"]))
+            check_for_update_async(__version__, _update_callback)
+        except Exception:
+            pass
+
         # Start dashboard server FIRST (so _setup_logger can reference it)
         self._start_dashboard(cfg)
 

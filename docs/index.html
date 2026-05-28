@@ -1638,6 +1638,24 @@
 
         <div class="changelog-entry">
           <div class="changelog-header" onclick="this.nextElementSibling.classList.toggle('open');this.querySelector('.changelog-expand').textContent=this.nextElementSibling.classList.contains('open')?'▾':'▸'">
+            <span class="changelog-version">0.3.6</span>
+            <span class="changelog-date">2026-05-28</span>
+            <span class="changelog-tag tag-feature">Feature</span>
+            <span class="changelog-expand">▾</span>
+          </div>
+          <div class="changelog-body open">
+            <h4>✨ Added</h4>
+            <ul>
+              <li><strong>Auto-Update & Check-for-Updates CLI Options</strong> — Added global <code>--update</code> flag to check npm registry and auto-update Adelie locally.</li>
+              <li><strong>Graceful Splash Update Notices</strong> — Non-blocking update check (with a 1s timeout) on startup splash welcome screen with a cute penguin alert.</li>
+              <li><strong>Async REPL Startup Checks</strong> — Background thread update checking for <code>adelie run</code> command loop that displays alerts gracefully.</li>
+              <li><strong>English Localization for Update Systems</strong> — Fully localized all update-checking notices and output logs into English for global npm packages.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="changelog-entry">
+          <div class="changelog-header" onclick="this.nextElementSibling.classList.toggle('open');this.querySelector('.changelog-expand').textContent=this.nextElementSibling.classList.contains('open')?'▾':'▸'">
             <span class="changelog-version">0.3.5</span>
             <span class="changelog-date">2026-05-27</span>
             <span class="changelog-tag tag-fix">Fix</span>

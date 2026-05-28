@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
+
+## [0.3.6] - 2026-05-28
+
+### Added
+- **Auto-Update & Check-for-Updates CLI Options** — Added a global `--update` flag to synchronously check for updates against the npm registry and automatically upgrade Adelie via `npm install -g adelie-ai@latest` if a newer version is available.
+- **Graceful Splash Update Notices** — Integrated a fast, non-blocking update check (with a 1s timeout) on the CLI welcome splash screen. Outputs a cute penguin alert notifying the user of available versions.
+- **Async REPL Startup Checks** — Connected an asynchronous background update checker to the `adelie run` command loop. Alerts users of updates seamlessly without delaying orchestrator startup.
+- **English Localization for Update Systems** — Localized all update-checking notifications, warnings, progress messages, and error diagnostics into English for global npm distribution.
+
 ## [0.3.5] - 2026-05-27
 
 ### Fixed
