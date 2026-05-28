@@ -792,7 +792,7 @@
       <a href="#monitoring">Monitoring</a>
       <a href="#changelog">Changelog</a>
       <a href="https://github.com/Ade1ie/adelie" target="_blank">GitHub ↗</a>
-      <span class="nav-badge">v0.3.8</span>
+      <span class="nav-badge">v0.3.9</span>
     </div>
   </nav>
 
@@ -819,7 +819,7 @@
     <p class="sub">Self-Communicating Autonomous AI Development Loop — 13 specialized AI agents working together to
       build your projects.</p>
     <div class="hero-badges">
-      <span class="badge badge-blue">🐧 v0.3.8</span>
+      <span class="badge badge-blue">🐧 v0.3.9</span>
       <span class="badge badge-green">Gemini &amp; Ollama</span>
       <span class="badge badge-purple">13 AI Agents</span>
       <span class="badge badge-blue">macOS · Linux · Windows</span>
@@ -1638,12 +1638,28 @@
 
         <div class="changelog-entry">
           <div class="changelog-header" onclick="this.nextElementSibling.classList.toggle('open');this.querySelector('.changelog-expand').textContent=this.nextElementSibling.classList.contains('open')?'▾':'▸'">
-            <span class="changelog-version">0.3.8</span>
+            <span class="changelog-version">0.3.9</span>
             <span class="changelog-date">2026-05-28</span>
-            <span class="changelog-tag tag-fix">Fix</span>
+            <span class="changelog-tag tag-feature">Feature</span>
             <span class="changelog-expand">▾</span>
           </div>
           <div class="changelog-body open">
+            <h4>✨ Added</h4>
+            <ul>
+              <li><strong>Test Environment & Dependency Detection</strong> — Automated detection of active test runners (vitest/jest/pytest) and installed <code>devDependencies</code> in <code>package.json</code> (across monorepos). Tester AI now writes precise assertions matching current imports, with built-in assert/test fallbacks.</li>
+              <li><strong>Fail-Safe Executions</strong> — Skips TS/TSX tests when no test runner is available, and executes plain JS tests directly with Node, preventing test environment timeouts.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="changelog-entry">
+          <div class="changelog-header" onclick="this.nextElementSibling.classList.toggle('open');this.querySelector('.changelog-expand').textContent=this.nextElementSibling.classList.contains('open')?'▾':'▸'">
+            <span class="changelog-version">0.3.8</span>
+            <span class="changelog-date">2026-05-28</span>
+            <span class="changelog-tag tag-fix">Fix</span>
+            <span class="changelog-expand">▸</span>
+          </div>
+          <div class="changelog-body">
             <h4>🐛 Fixed</h4>
             <ul>
               <li><strong>Non-Interactive TSX Test Hang</strong> — Added the <code>-y</code> auto-confirm flag to the <code>npx tsx</code> command in Tester AI, preventing 60-second test timeouts caused by npm package prompts.</li>

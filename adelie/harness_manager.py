@@ -129,13 +129,14 @@ CODER TASK RULES FOR MID PHASE:
 - Each task should be self-contained — the coder creates files from scratch.
 - Be SPECIFIC: include exact filenames, tech stack, data models in task descriptions.""",
             "transition_criteria": {
-                "description": "Transition to MID_1 when: core features are implemented, basic tests pass, implementation_plan tasks are mostly complete.",
+                "description": "Transition to MID_1 when: core features are implemented, basic tests pass (>=30%), build succeeds, implementation_plan tasks are mostly complete.",
                 "conditions": {
                     "min_loops": 15,
                     "min_kb_files": 8,
                     "required_files": ["implementation", "test"],
-                    "min_test_pass_rate": 0.0,
+                    "min_test_pass_rate": 0.3,
                     "min_review_score": 4,
+                    "require_build_success": True,
                 },
             },
             "next_phase": "mid_1",
@@ -170,13 +171,14 @@ Your decision criteria in this phase:
 - Use EXPORT for test results and roadmap updates
 - If roadmap has gaps, request updates via kb_updates_needed""",
             "transition_criteria": {
-                "description": "Transition to MID_2 when: tests pass, roadmap is updated, no critical duplicates, operational guide exists.",
+                "description": "Transition to MID_2 when: tests pass (>=50%), build succeeds, roadmap is updated, no critical duplicates, operational guide exists.",
                 "conditions": {
                     "min_loops": 20,
                     "min_kb_files": 10,
                     "required_files": ["operations", "test_result"],
-                    "min_test_pass_rate": 0.3,
+                    "min_test_pass_rate": 0.5,
                     "min_review_score": 5,
+                    "require_build_success": True,
                 },
             },
             "next_phase": "mid_2",
@@ -579,6 +581,7 @@ class HarnessManager:
         test_pass_rate: float = 0.0,
         avg_review_score: float = 0.0,
         loop_multiplier: float = 1.0,
+        build_success: bool = False,
     ) -> str | None:
         """
         Check if conditions for the next phase are met.
@@ -620,6 +623,10 @@ class HarnessManager:
 
         # Check min_review_score
         if avg_review_score < conditions.get("min_review_score", 0):
+            return None
+
+        # Check require_build_success
+        if conditions.get("require_build_success", False) and not build_success:
             return None
 
         return next_phase

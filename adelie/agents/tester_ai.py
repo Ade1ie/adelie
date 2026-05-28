@@ -41,7 +41,8 @@ ALLOWED_COMMANDS = [
 BLOCKED_FLAGS = {"-c", "--eval", "eval", "exec", "--exec", "-e"}
 
 # Dangerous shell metacharacters
-BLOCKED_CHARS = {";", "|", "&", "&&", "||", "`", "$(", ">", ">>", "<<"}
+# NOTE: With shell=False (subprocess.run with list args), most are harmless.
+BLOCKED_CHARS = {";", "`", "$("}
 
 EXEC_TIMEOUT = 60  # seconds
 
@@ -73,7 +74,94 @@ RULES:
 - Use relative imports when possible
 - Tests should assert expected behavior, not just run without checking
 - Keep tests focused and fast
+
+CRITICAL DEPENDENCY RULES:
+- You will be told which test runner and devDependencies are available.
+- ONLY import packages that are listed as available. Do NOT assume packages exist.
+- If NO test framework (vitest/jest/mocha) is installed, write tests using ONLY:
+  * Node.js built-in `assert` module (const assert = require('assert');)
+  * Node.js built-in `test` module if Node >= 18 (const { test } = require('node:test');)
+  * Direct require() of the source file being tested
+- Do NOT import @testing-library/react, enzyme, or any DOM testing library unless
+  explicitly listed as available.
+- For TypeScript source files, write tests in plain JavaScript (.js) using require()
+  UNLESS vitest or jest with ts-jest is available.
+- Test files MUST have .js extension unless a test runner supporting .ts is available.
+- Do NOT use `npx tsx` or `ts-node` to run tests — use the detected test runner.
 """
+
+
+def _detect_test_runner(workspace_root: Path) -> dict:
+    """
+    Detect available test runners in the project.
+
+    Returns dict with:
+      - runner: 'vitest' | 'jest' | 'pytest' | 'none'
+      - bin_path: absolute path to the runner binary (or empty)
+    """
+    import shutil
+
+    # Check node_modules/.bin for JS/TS test runners
+    bin_dir = workspace_root / "node_modules" / ".bin"
+
+    # Check all workspace subdirs too (monorepo support)
+    bin_dirs = [bin_dir]
+    pkg_path = workspace_root / "package.json"
+    if pkg_path.exists():
+        try:
+            pkg = json.loads(pkg_path.read_text(encoding="utf-8"))
+            for ws in pkg.get("workspaces", []):
+                if "*" not in ws:
+                    ws_bin = workspace_root / ws / "node_modules" / ".bin"
+                    if ws_bin.exists():
+                        bin_dirs.append(ws_bin)
+        except Exception:
+            pass
+
+    for bd in bin_dirs:
+        vitest_bin = bd / "vitest"
+        if vitest_bin.exists():
+            return {"runner": "vitest", "bin_path": str(vitest_bin)}
+        jest_bin = bd / "jest"
+        if jest_bin.exists():
+            return {"runner": "jest", "bin_path": str(jest_bin)}
+
+    # Check for pytest
+    if shutil.which("pytest"):
+        return {"runner": "pytest", "bin_path": shutil.which("pytest") or "pytest"}
+
+    return {"runner": "none", "bin_path": ""}
+
+
+def _get_available_devdeps(workspace_root: Path) -> list[str]:
+    """
+    Read package.json devDependencies and dependencies to tell the LLM
+    which packages are actually available for import.
+    """
+    all_deps: set[str] = set()
+
+    # Read root package.json
+    for pkg_file in [workspace_root / "package.json"]:
+        if pkg_file.exists():
+            try:
+                pkg = json.loads(pkg_file.read_text(encoding="utf-8"))
+                all_deps.update(pkg.get("dependencies", {}).keys())
+                all_deps.update(pkg.get("devDependencies", {}).keys())
+
+                # Also check workspace package.json files
+                for ws in pkg.get("workspaces", []):
+                    if "*" not in ws:
+                        ws_pkg = workspace_root / ws / "package.json"
+                        if ws_pkg.exists():
+                            ws_data = json.loads(ws_pkg.read_text(encoding="utf-8"))
+                            all_deps.update(ws_data.get("dependencies", {}).keys())
+                            all_deps.update(ws_data.get("devDependencies", {}).keys())
+            except Exception:
+                pass
+
+    # Filter out build tools that aren't importable in tests
+    non_importable = {"typescript", "vite", "@vitejs/plugin-react", "concurrently"}
+    return sorted(all_deps - non_importable)
 
 
 def _is_command_allowed(cmd: str) -> bool:
@@ -161,11 +249,15 @@ def run_tests(
         f"generating tests for {len(source_files)} file(s)"
     )
 
-    # ── Environment Strategy ──────────────────────────────────────────────
+    # ── Environment Strategy ────────────────────────────────────────────────────────
     from adelie.env_strategy import detect_env, select_strategy, wrap_command, get_current_phase, ensure_env
     env_profile = detect_env(workspace_root)
     env_profile = ensure_env(env_profile, workspace_root)
     env_strategy = select_strategy(env_profile, phase=get_current_phase())
+
+    # ── Detect test runner and available devDependencies ─────────────────
+    test_runner_info = _detect_test_runner(workspace_root)
+    available_devdeps = _get_available_devdeps(workspace_root)
 
     # Read source files for context
     file_contents = []
@@ -179,7 +271,20 @@ def run_tests(
             except Exception:
                 pass
 
+    # Build runner info section for prompt
+    runner_section = "## Available Test Environment\n"
+    runner_section += f"Test runner: {test_runner_info['runner']}\n"
+    runner_section += f"Available devDependencies: {', '.join(available_devdeps) if available_devdeps else 'NONE'}\n"
+    runner_section += f"IMPORTANT: You can ONLY import packages listed above. Do NOT import anything else.\n"
+    if test_runner_info['runner'] == 'none':
+        runner_section += (
+            "No test framework is installed. Write tests using ONLY Node.js built-in 'assert' module.\n"
+            "Use require() to import source files with relative paths from the project root.\n"
+            "Test files MUST have .js extension.\n"
+        )
+
     user_prompt = (
+        f"{runner_section}\n"
         f"## Source Files to Test\n\n"
         + "\n\n".join(file_contents)
         + f"\n\n## Max Test Layer: {max_test_layer}\n"
@@ -272,11 +377,23 @@ def run_tests(
             run_cmd = f'{python} -m pytest "{script_path}" -v --tb=short'
         elif lang in ("javascript", "js", "typescript", "ts"):
             ext = script_path.suffix.lower()
-            if ext in (".ts", ".tsx", ".jsx"):
-                # TypeScript/JSX: use npx tsx to execute directly
-                # (vitest's include patterns conflict with Tester AI naming)
-                run_cmd = f'npx -y tsx "{script_path}"'
+            runner = test_runner_info.get("runner", "none")
+            runner_bin = test_runner_info.get("bin_path", "")
+
+            if runner == "vitest" and runner_bin:
+                run_cmd = f'{runner_bin} run "{script_path}"'
+            elif runner == "jest" and runner_bin:
+                run_cmd = f'{runner_bin} --testMatch "{script_path}"'
+            elif ext in (".ts", ".tsx", ".jsx"):
+                # No test runner for TS/JSX — cannot execute directly.
+                # Skip this test and log a warning.
+                console.print(
+                    f"  [yellow]⚠️  Skipping {name}: .ts/.tsx/.jsx test requires "
+                    f"vitest or jest (not installed)[/yellow]"
+                )
+                continue
             else:
+                # Plain .js — run with node directly
                 run_cmd = f'node "{script_path}"'
         else:
             # Fall back to LLM-provided command if language unknown

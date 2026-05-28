@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.3.9] - 2026-05-28
+
+### Added
+- **Intelligent Test Environment Detection & Fail-Safe Test Writing** — Added automated detection of available test runners (`vitest`, `jest`, `pytest`) and `devDependencies` in `package.json` (across monorepos). Tester AI now only writes tests matching available imports. If no test framework is installed, it falls back to plain JS using Node's built-in `assert`/`test` modules.
+- **Fail-Safe Test Skipping** — Avoids test timeouts by skipping `.ts`/`.tsx`/`.jsx` tests if no compatible test runner is present, and directly executes plain `.js` tests with `node`.
+
 ## [0.3.8] - 2026-05-28
 
 ### Fixed

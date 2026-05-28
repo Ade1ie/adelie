@@ -176,17 +176,35 @@ def run_health_check(
         f"- Active: {len(active_services)}/{len(http_results)}\n"
     )
 
-    # 2. Process Checks — clean up dead processes
+    # 2. Process Checks — clean up dead processes AND verify HTTP health
     processes = _load_tracked_processes()
     alive = 0
     dead = 0
     alive_procs = []
+    process_http_issues = []
     for proc in processes:
         pid = proc.get("pid")
         if pid and _check_process(pid):
             alive += 1
             alive_procs.append(proc)
             console.print(f"  [green]✅ PID {pid}[/green] — {proc.get('description', '?')}")
+
+            # If the process has a port, verify HTTP health too
+            port = proc.get("port")
+            if port:
+                http_check = _check_http(f"http://localhost:{port}", timeout=3)
+                if http_check["status"] == "healthy":
+                    console.print(f"    [green]✅ HTTP :{port}[/green] — {http_check['response_ms']}ms")
+                elif http_check["status"] == "down":
+                    console.print(f"    [yellow]⚠️  HTTP :{port} not responding (process may still be starting)[/yellow]")
+                    process_http_issues.append(
+                        f"PID {pid} alive but HTTP :{port} not responding — {proc.get('description', '?')}"
+                    )
+                else:
+                    console.print(f"    [red]❌ HTTP :{port} — {http_check['status']}[/red]")
+                    process_http_issues.append(
+                        f"PID {pid} HTTP :{port} {http_check['status']} — {proc.get('description', '?')}"
+                    )
         else:
             dead += 1
 
@@ -196,9 +214,14 @@ def run_health_check(
         process_file = RUNNER_ROOT / "processes.json"
         process_file.write_text(json.dumps(alive_procs, indent=2), encoding="utf-8")
 
+    # Add HTTP issues to alerts
+    alerts.extend(process_http_issues)
+
     report_parts.append(
         f"### Processes\n"
-        f"- Alive: {alive} | Cleaned: {dead}\n"
+        f"- Alive: {alive} | Cleaned: {dead}"
+        + (f" | HTTP issues: {len(process_http_issues)}" if process_http_issues else "")
+        + "\n"
     )
 
     # 3. Log Error Scan

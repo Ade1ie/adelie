@@ -245,6 +245,10 @@ def _bootstrap_npm(project_root: Path) -> bool:
       2. npm install --legacy-peer-deps  (dependency conflicts)
       3. npm install --force             (last resort)
 
+    Between each attempt, corrupt node_modules are removed so the next
+    install starts from a clean state (prevents half-installed packages
+    like date-fns with only .d.ts stubs).
+
     Returns True if any attempt succeeded.
     """
     import sys
@@ -255,7 +259,14 @@ def _bootstrap_npm(project_root: Path) -> bool:
         ("npm install --force", "npm install --force"),
     ]
 
-    for label, cmd in strategies:
+    for idx, (label, cmd) in enumerate(strategies):
+        # Clean corrupt node_modules before retry attempts
+        if idx > 0:
+            node_modules = project_root / "node_modules"
+            if node_modules.exists():
+                console.print("  [dim]  🗑️  Removing corrupt node_modules before retry…[/dim]")
+                shutil.rmtree(node_modules, ignore_errors=True)
+
         console.print(f"  [dim]  ▶ {label}…[/dim]")
         try:
             if _win:
@@ -276,8 +287,13 @@ def _bootstrap_npm(project_root: Path) -> bool:
                     timeout=180,
                 )
             if result.returncode == 0:
-                console.print(f"  [green]  ✅ {label} succeeded[/green]")
-                return True
+                # Verify the install actually produced valid modules
+                node_modules = project_root / "node_modules"
+                if node_modules.is_dir():
+                    console.print(f"  [green]  ✅ {label} succeeded[/green]")
+                    return True
+                else:
+                    console.print(f"  [dim]  ⚠️ {label} exited 0 but node_modules missing[/dim]")
             else:
                 stderr_short = result.stderr.strip()[-200:] if result.stderr else ""
                 console.print(f"  [dim]  ⚠️ {label} failed — trying fallback…[/dim]")

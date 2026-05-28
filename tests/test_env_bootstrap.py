@@ -80,7 +80,10 @@ class TestEnsureEnv:
 class TestBootstrapNpm:
     def test_success_on_first_try(self, tmp_path):
         with mock.patch("adelie.env_strategy.subprocess.run") as mock_run:
-            mock_run.return_value = mock.MagicMock(returncode=0, stderr="", stdout="")
+            def side_effect(*args, **kwargs):
+                (tmp_path / "node_modules").mkdir(exist_ok=True)
+                return mock.MagicMock(returncode=0, stderr="", stdout="")
+            mock_run.side_effect = side_effect
             result = _bootstrap_npm(tmp_path)
             assert result is True
             assert mock_run.call_count == 1
@@ -88,10 +91,12 @@ class TestBootstrapNpm:
     def test_fallback_to_legacy_peer_deps(self, tmp_path):
         with mock.patch("adelie.env_strategy.subprocess.run") as mock_run:
             # First call fails, second succeeds
-            mock_run.side_effect = [
-                mock.MagicMock(returncode=1, stderr="ERESOLVE", stdout=""),
-                mock.MagicMock(returncode=0, stderr="", stdout=""),
-            ]
+            def side_effect(*args, **kwargs):
+                if mock_run.call_count == 1:
+                    return mock.MagicMock(returncode=1, stderr="ERESOLVE", stdout="")
+                (tmp_path / "node_modules").mkdir(exist_ok=True)
+                return mock.MagicMock(returncode=0, stderr="", stdout="")
+            mock_run.side_effect = side_effect
             result = _bootstrap_npm(tmp_path)
             assert result is True
             assert mock_run.call_count == 2
@@ -101,11 +106,12 @@ class TestBootstrapNpm:
 
     def test_fallback_to_force(self, tmp_path):
         with mock.patch("adelie.env_strategy.subprocess.run") as mock_run:
-            mock_run.side_effect = [
-                mock.MagicMock(returncode=1, stderr="ERESOLVE", stdout=""),
-                mock.MagicMock(returncode=1, stderr="ERESOLVE", stdout=""),
-                mock.MagicMock(returncode=0, stderr="", stdout=""),
-            ]
+            def side_effect(*args, **kwargs):
+                if mock_run.call_count in (1, 2):
+                    return mock.MagicMock(returncode=1, stderr="ERESOLVE", stdout="")
+                (tmp_path / "node_modules").mkdir(exist_ok=True)
+                return mock.MagicMock(returncode=0, stderr="", stdout="")
+            mock_run.side_effect = side_effect
             result = _bootstrap_npm(tmp_path)
             assert result is True
             assert mock_run.call_count == 3

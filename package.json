@@ -1,6 +1,6 @@
 {
   "name": "adelie-ai",
-  "version": "0.3.8",
+  "version": "0.3.9",
   "description": "Adelie — Self-Communicating Autonomous AI Loop CLI",
   "bin": {
     "adelie": "bin/adelie.js"

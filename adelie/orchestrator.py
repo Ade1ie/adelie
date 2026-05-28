@@ -276,6 +276,7 @@ class Orchestrator:
             test_pass_rate=test_pass_rate,
             avg_review_score=avg_review_score,
             loop_multiplier=loop_mult,
+            build_success=not bool(self._last_build_errors),
         )
 
     def _save_state(self) -> None:

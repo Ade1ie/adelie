@@ -59,9 +59,11 @@ DEPLOY_COMMANDS = RUN_COMMANDS + [
 BLOCKED_FLAGS = {"-c", "--eval", "eval", "exec", "--exec", "-e"}
 
 # Dangerous shell metacharacters
-BLOCKED_CHARS = {";", "|", "&", "&&", "||", "`", "$(", ">", ">>", "<<"}
+# NOTE: With shell=False (subprocess.run with list args), these are harmless
+# string literals. We only block truly dangerous injection patterns.
+BLOCKED_CHARS = {";", "`", "$("}
 
-EXEC_TIMEOUT_BUILD = 120
+EXEC_TIMEOUT_BUILD = 180  # Increased for large monorepo installs
 EXEC_TIMEOUT_RUN = 10  # Short timeout — we just check if it starts
 EXEC_TIMEOUT_DEPLOY = 180
 
@@ -547,6 +549,25 @@ def run_pipeline(
                 if result["pid"]:
                     _save_process(result["pid"], cmd, desc)
             else:
+                # ── Auto-recovery: clean retry for npm install failures ──
+                is_npm_install = cmd.strip().startswith("npm") and "install" in cmd
+                if is_npm_install and tier == "build":
+                    console.print(f"  [yellow]🔄 npm install failed — cleaning node_modules and retrying…[/yellow]")
+                    nm_path = cwd / "node_modules"
+                    if nm_path.exists():
+                        shutil.rmtree(nm_path, ignore_errors=True)
+                    # Retry with clean state
+                    retry_result = _execute(cmd, cwd, timeout, background)
+                    if retry_result["returncode"] == 0:
+                        succeeded += 1
+                        console.print(f"  [green]✅ OK (clean retry)[/green]")
+                        log_entries.append({
+                            "tier": tier, "command": cmd,
+                            "description": desc + " (clean retry)",
+                            "result": retry_result,
+                        })
+                        continue  # Skip the error recording below
+
                 failed += 1
                 console.print(f"  [red]❌ Failed (rc={result['returncode']})[/red]")
                 if result["stderr"]:
