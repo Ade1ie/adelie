@@ -275,7 +275,7 @@ def run_tests(
             if ext in (".ts", ".tsx", ".jsx"):
                 # TypeScript/JSX: use npx tsx to execute directly
                 # (vitest's include patterns conflict with Tester AI naming)
-                run_cmd = f'npx tsx "{script_path}"'
+                run_cmd = f'npx -y tsx "{script_path}"'
             else:
                 run_cmd = f'node "{script_path}"'
         else:

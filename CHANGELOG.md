@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.3.8] - 2026-05-28
+
+### Fixed
+- **Non-Interactive TSX Test Hang (Bug Fix)** — Added the `-y` auto-confirm flag to the `npx tsx` command in Tester AI. This prevents the command from hanging indefinitely on npm's interactive package installation prompts within non-interactive shells, solving the 60-second test timeout loop.
+
 ## [0.3.7] - 2026-05-28
 
 ### Fixed

@@ -1,32 +1,36 @@
 ---
 schema_version: 1
 type: bug
-slug: monorepo-scaffolding-check-loop-fix
+slug: "monorepo-scaffolding-check-loop-fix"
 status: done
 difficulty: medium
 created_at: "2026-05-28T12:33:00+09:00"
 updated_at: "2026-05-28T12:33:15+09:00"
 session_id: "manual-20260528-123300"
 agent:
-  id: antigravity
+  id: "antigravity"
   version: "3.5"
-language: ko
-verified_by_user: false
+language: "ko"
+verified_by_user: true
 files_touched:
-  - path: adelie/agents/expert_ai.py
+  - path: "adelie/agents/expert_ai.py"
     op: update
-  - path: package.json
+  - path: "package.json"
     op: update
-  - path: adelie/__init__.py
+  - path: "adelie/__init__.py"
     op: update
-  - path: CHANGELOG.md
+  - path: "CHANGELOG.md"
     op: update
-  - path: docs/index.html
+  - path: "docs/index.html"
     op: update
-  - path: docs/adelie.rb
+  - path: "docs/adelie.rb"
     op: update
 related: []
-tags: ["scaffolding", "monorepo", "expert-ai", "loop-detection"]
+tags:
+  - "scaffolding"
+  - "monorepo"
+  - "expert-ai"
+  - "loop-detection"
 ---
 
 [x] 모노레포 워크스페이스 스캐폴딩 무한 루프 감지 오류 수정 및 v0.3.7 릴리즈

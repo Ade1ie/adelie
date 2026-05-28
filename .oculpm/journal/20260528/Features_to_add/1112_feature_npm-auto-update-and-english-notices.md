@@ -1,51 +1,55 @@
 ---
 schema_version: 1
 type: feature
-slug: npm-auto-update-and-english-notices
+slug: "npm-auto-update-and-english-notices"
 status: done
 difficulty: low
 created_at: "2026-05-28T11:12:00+09:00"
 session_id: "manual-20260528-111200"
 agent:
-  id: antigravity
+  id: "antigravity"
   version: "1.0"
-language: ko
-verified_by_user: false
+language: "ko"
+verified_by_user: true
 files_touched:
-  - path: adelie/cli.py
+  - path: "adelie/cli.py"
     op: update
     bytes_added: 650
     bytes_removed: 50
-  - path: adelie/interactive.py
+  - path: "adelie/interactive.py"
     op: update
     bytes_added: 480
     bytes_removed: 20
-  - path: adelie/updater.py
+  - path: "adelie/updater.py"
     op: update
     bytes_added: 1200
     bytes_removed: 1200
-  - path: adelie/__init__.py
+  - path: "adelie/__init__.py"
     op: update
     bytes_added: 6
     bytes_removed: 6
-  - path: package.json
+  - path: "package.json"
     op: update
     bytes_added: 1
     bytes_removed: 1
-  - path: CHANGELOG.md
+  - path: "CHANGELOG.md"
     op: update
     bytes_added: 600
     bytes_removed: 0
-  - path: docs/index.html
+  - path: "docs/index.html"
     op: update
     bytes_added: 900
     bytes_removed: 0
-  - path: docs/adelie.rb
+  - path: "docs/adelie.rb"
     op: update
     bytes_added: 1
     bytes_removed: 1
 related: []
-tags: ["cli", "updater", "localization", "release"]
+tags:
+  - "cli"
+  - "updater"
+  - "localization"
+  - "release"
 ---
 
 [x] adelie CLI 자율 업데이트 기능 추가 및 전체 영어 현지화 작업 완료
